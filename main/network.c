@@ -79,8 +79,8 @@ esp_err_t network_init(void)
 
     // ESP32-P4 Internal EMAC
     eth_esp32_emac_config_t esp32_emac_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
-    esp32_emac_config.smi_mdc_gpio_num = ETH_MDC_GPIO;
-    esp32_emac_config.smi_mdio_gpio_num = ETH_MDIO_GPIO;
+    esp32_emac_config.smi_gpio.mdc_num = ETH_MDC_GPIO;
+    esp32_emac_config.smi_gpio.mdio_num = ETH_MDIO_GPIO;
     // Configure RMII Clock
     esp32_emac_config.clock_config.rmii.clock_mode = EMAC_CLK_EXT_IN;
     esp32_emac_config.clock_config.rmii.clock_gpio = ETH_RMII_CLK_GPIO;

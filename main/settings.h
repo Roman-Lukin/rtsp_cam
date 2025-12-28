@@ -15,7 +15,7 @@ extern "C" {
 #if CONFIG_IDF_TARGET_ESP32P4
 #define VIDEO_WIDTH  1920
 #define VIDEO_HEIGHT 1080
-#define VIDEO_FPS    25
+#define VIDEO_FPS    30
 #else
 #define VIDEO_WIDTH  320
 #define VIDEO_HEIGHT 240
