@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <errno.h>
@@ -33,7 +34,11 @@ static const char *TAG = "RTSP";
 #define RTP_H264_PAYLOAD_TYPE   96
 
 #define RTSP_TASK_STACK_SIZE    8192
-#define RTSP_TASK_PRIORITY      5
+#define RTSP_TASK_PRIORITY      10
+#define TCP_INTERLEAVED_HEADER  4       // $ + channel + length(2)
+
+// Pre-allocated buffer size for RTP packets (header + max payload + TCP header)
+#define RTP_BUFFER_SIZE         (TCP_INTERLEAVED_HEADER + RTP_HEADER_SIZE + RTP_MAX_PACKET_SIZE)
 
 // RTSP response templates
 #define RTSP_RESPONSE_OK        "RTSP/1.0 200 OK\r\n"
@@ -86,6 +91,9 @@ typedef struct {
     
     // Need keyframe flag (send SPS/PPS on next keyframe)
     bool need_keyframe;
+    
+    // Pre-allocated RTP buffer (optimization: avoid malloc in hot path)
+    uint8_t rtp_buffer[RTP_BUFFER_SIZE];
 } rtsp_client_t;
 
 struct rtsp_server_t {
@@ -102,6 +110,11 @@ struct rtsp_server_t {
     size_t sps_size;
     uint8_t *pps_data;
     size_t pps_size;
+    
+    // IDR frame storage (for new clients)
+    uint8_t *idr_data;
+    size_t idr_size;
+    uint32_t idr_ts;
     
     TaskHandle_t server_task;
     TaskHandle_t client_tasks[RTSP_MAX_CLIENTS];
@@ -145,49 +158,56 @@ static size_t base64_encode(const uint8_t *input, size_t input_len, char *output
 }
 
 // ============================================================================
-// NAL unit parsing
+// NAL unit parsing (optimized with early exit)
 // ============================================================================
 
 static const uint8_t *find_nal_unit(const uint8_t *data, size_t size, size_t *nal_size, size_t *offset)
 {
     size_t i = *offset;
+    const size_t end = size - 3;
     
     // Find start code (00 00 01 or 00 00 00 01)
-    while (i + 3 < size) {
-        if (data[i] == 0 && data[i+1] == 0) {
+    while (i < end) {
+        // Quick check for first zero byte - skip non-zero bytes fast
+        if (data[i] != 0) {
+            i++;
+            continue;
+        }
+        
+        if (data[i+1] == 0) {
+            size_t nal_start;
+            
             if (data[i+2] == 1) {
                 // Found 00 00 01
-                size_t nal_start = i + 3;
-                
-                // Find next start code or end
-                size_t j = nal_start;
-                while (j + 2 < size) {
-                    if (data[j] == 0 && data[j+1] == 0 && (data[j+2] == 1 || (data[j+2] == 0 && j + 3 < size && data[j+3] == 1))) {
-                        break;
-                    }
-                    j++;
-                }
-                
-                *nal_size = j - nal_start;
-                *offset = j;
-                return &data[nal_start];
+                nal_start = i + 3;
             } else if (data[i+2] == 0 && i + 3 < size && data[i+3] == 1) {
                 // Found 00 00 00 01
-                size_t nal_start = i + 4;
-                
-                // Find next start code or end
-                size_t j = nal_start;
-                while (j + 2 < size) {
-                    if (data[j] == 0 && data[j+1] == 0 && (data[j+2] == 1 || (data[j+2] == 0 && j + 3 < size && data[j+3] == 1))) {
+                nal_start = i + 4;
+            } else {
+                i++;
+                continue;
+            }
+            
+            // Find next start code or end
+            size_t j = nal_start;
+            const size_t search_end = size - 2;
+            
+            while (j < search_end) {
+                if (data[j] == 0 && data[j+1] == 0) {
+                    if (data[j+2] == 1 || (data[j+2] == 0 && j + 3 < size && data[j+3] == 1)) {
                         break;
                     }
-                    j++;
                 }
-                
-                *nal_size = j - nal_start;
-                *offset = j;
-                return &data[nal_start];
+                j++;
             }
+            
+            if (j >= search_end) {
+                j = size;  // NAL extends to end of buffer
+            }
+            
+            *nal_size = j - nal_start;
+            *offset = j;
+            return &data[nal_start];
         }
         i++;
     }
@@ -196,15 +216,13 @@ static const uint8_t *find_nal_unit(const uint8_t *data, size_t size, size_t *na
 }
 
 // ============================================================================
-// RTP H.264 packetization (RFC 6184)
+// RTP H.264 packetization (RFC 6184) - Optimized
 // ============================================================================
 
-static void send_rtp_packet(rtsp_client_t *client, const uint8_t *data, size_t size, 
-                            uint32_t timestamp, bool marker, uint8_t payload_type)
+// Inline RTP header construction for speed
+static inline void build_rtp_header(uint8_t *packet, rtsp_client_t *client, 
+                                     uint32_t timestamp, bool marker, uint8_t payload_type)
 {
-    uint8_t packet[RTP_MAX_PACKET_SIZE + RTP_HEADER_SIZE];
-    
-    // RTP Header
     packet[0] = 0x80;  // V=2, P=0, X=0, CC=0
     packet[1] = (marker ? 0x80 : 0x00) | (payload_type & 0x7F);
     packet[2] = (client->rtp_seq >> 8) & 0xFF;
@@ -218,24 +236,41 @@ static void send_rtp_packet(rtsp_client_t *client, const uint8_t *data, size_t s
     packet[10] = (client->ssrc >> 8) & 0xFF;
     packet[11] = client->ssrc & 0xFF;
     
-    // Copy payload
-    memcpy(&packet[RTP_HEADER_SIZE], data, size);
-    
     client->rtp_seq++;
+}
+
+static void send_rtp_packet(rtsp_client_t *client, const uint8_t *data, size_t size, 
+                            uint32_t timestamp, bool marker, uint8_t payload_type)
+{
+    // Use pre-allocated buffer instead of stack allocation
+    uint8_t *packet = client->rtp_buffer;
+    size_t packet_offset = 0;
+    
+    if (client->transport == TRANSPORT_TCP_INTERLEAVED) {
+        // TCP Interleaved: $ + channel + length (2 bytes) + RTP packet
+        size_t total_size = RTP_HEADER_SIZE + size;
+        packet[0] = '$';
+        packet[1] = client->rtp_channel;
+        packet[2] = (total_size >> 8) & 0xFF;
+        packet[3] = total_size & 0xFF;
+        packet_offset = TCP_INTERLEAVED_HEADER;
+    }
+    
+    // Build RTP header
+    build_rtp_header(&packet[packet_offset], client, timestamp, marker, payload_type);
+    
+    // Copy payload
+    memcpy(&packet[packet_offset + RTP_HEADER_SIZE], data, size);
+    
+    // Send in one syscall (reduces overhead)
+    size_t total_len = packet_offset + RTP_HEADER_SIZE + size;
     
     if (client->transport == TRANSPORT_UDP) {
-        sendto(client->rtp_socket, packet, RTP_HEADER_SIZE + size, 0,
+        sendto(client->rtp_socket, &packet[packet_offset], RTP_HEADER_SIZE + size, 0,
                (struct sockaddr *)&client->rtp_addr, sizeof(client->rtp_addr));
     } else {
-        // TCP Interleaved: $ + channel + length (2 bytes) + RTP packet
-        uint8_t header[4];
-        header[0] = '$';
-        header[1] = client->rtp_channel;
-        header[2] = ((RTP_HEADER_SIZE + size) >> 8) & 0xFF;
-        header[3] = (RTP_HEADER_SIZE + size) & 0xFF;
-        
-        send(client->socket, header, 4, 0);
-        send(client->socket, packet, RTP_HEADER_SIZE + size, 0);
+        // Single send() instead of two - reduces syscall overhead
+        send(client->socket, packet, total_len, MSG_NOSIGNAL);
     }
 }
 
@@ -244,44 +279,68 @@ static void send_rtp_h264(rtsp_server_handle_t server, rtsp_client_t *client,
 {
     if (nal_size == 0) return;
     
-    uint8_t nal_type = nal[0] & 0x1F;
-    
     // Single NAL unit mode (small NAL fits in one packet)
     if (nal_size <= RTP_MAX_PACKET_SIZE) {
         send_rtp_packet(client, nal, nal_size, timestamp, marker, RTP_H264_PAYLOAD_TYPE);
-    } else {
-        // FU-A fragmentation for large NALs
-        uint8_t fu_indicator = (nal[0] & 0xE0) | 28;  // FU-A type = 28
-        uint8_t fu_header;
+        return;
+    }
+    
+    // FU-A fragmentation for large NALs
+    uint8_t nal_type = nal[0] & 0x1F;
+    uint8_t fu_indicator = (nal[0] & 0xE0) | 28;  // FU-A type = 28
+    
+    // Use client's pre-allocated buffer for FU packets
+    uint8_t *packet = client->rtp_buffer;
+    size_t packet_offset = (client->transport == TRANSPORT_TCP_INTERLEAVED) ? TCP_INTERLEAVED_HEADER : 0;
+    uint8_t *fu_packet = &packet[packet_offset + RTP_HEADER_SIZE];
+    fu_packet[0] = fu_indicator;
+    
+    size_t offset = 1;  // Skip NAL header
+    const size_t max_chunk = RTP_MAX_PACKET_SIZE - 2;
+    bool first = true;
+    
+    while (offset < nal_size) {
+        size_t chunk_size = nal_size - offset;
+        bool last = (chunk_size <= max_chunk);
         
-        size_t offset = 1;  // Skip NAL header
-        bool first = true;
-        
-        while (offset < nal_size) {
-            size_t chunk_size = nal_size - offset;
-            bool last = false;
-            
-            if (chunk_size > RTP_MAX_PACKET_SIZE - 2) {
-                chunk_size = RTP_MAX_PACKET_SIZE - 2;
-            } else {
-                last = true;
-            }
-            
-            fu_header = (nal_type & 0x1F);
-            if (first) fu_header |= 0x80;  // S bit
-            if (last) fu_header |= 0x40;   // E bit
-            
-            uint8_t fu_packet[RTP_MAX_PACKET_SIZE];
-            fu_packet[0] = fu_indicator;
-            fu_packet[1] = fu_header;
-            memcpy(&fu_packet[2], &nal[offset], chunk_size);
-            
-            send_rtp_packet(client, fu_packet, chunk_size + 2, timestamp, 
-                           last && marker, RTP_H264_PAYLOAD_TYPE);
-            
-            offset += chunk_size;
-            first = false;
+        if (!last) {
+            chunk_size = max_chunk;
         }
+        
+        // Build FU header
+        uint8_t fu_header = nal_type & 0x1F;
+        if (first) fu_header |= 0x80;  // S bit
+        if (last) fu_header |= 0x40;   // E bit
+        fu_packet[1] = fu_header;
+        
+        // Copy chunk directly into pre-allocated buffer
+        memcpy(&fu_packet[2], &nal[offset], chunk_size);
+        
+        // Build and send packet
+        size_t payload_size = chunk_size + 2;
+        
+        if (client->transport == TRANSPORT_TCP_INTERLEAVED) {
+            size_t total_rtp = RTP_HEADER_SIZE + payload_size;
+            packet[0] = '$';
+            packet[1] = client->rtp_channel;
+            packet[2] = (total_rtp >> 8) & 0xFF;
+            packet[3] = total_rtp & 0xFF;
+        }
+        
+        build_rtp_header(&packet[packet_offset], client, timestamp, 
+                        last && marker, RTP_H264_PAYLOAD_TYPE);
+        
+        size_t total_len = packet_offset + RTP_HEADER_SIZE + payload_size;
+        
+        if (client->transport == TRANSPORT_UDP) {
+            sendto(client->rtp_socket, &packet[packet_offset], RTP_HEADER_SIZE + payload_size, 0,
+                   (struct sockaddr *)&client->rtp_addr, sizeof(client->rtp_addr));
+        } else {
+            send(client->socket, packet, total_len, MSG_NOSIGNAL);
+        }
+        
+        offset += chunk_size;
+        first = false;
     }
 }
 
@@ -400,6 +459,10 @@ static int handle_setup(rtsp_server_handle_t server, rtsp_client_t *client,
             RTSP_RESPONSE_ERROR "CSeq: %d\r\n\r\n", cseq);
     }
     
+    // Set socket buffer size for lower latency
+    int sndbuf = 65536;
+    setsockopt(client->rtp_socket, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+    
     // Setup client RTP address
     memcpy(&client->rtp_addr, &client->addr, sizeof(struct sockaddr_in));
     client->rtp_addr.sin_port = htons(client->client_rtp_port);
@@ -432,8 +495,25 @@ static int handle_play(rtsp_server_handle_t server, rtsp_client_t *client,
     }
     
     client->state = CLIENT_STATE_PLAYING;
-    client->need_keyframe = true;
+    client->need_keyframe = false;  // We'll send IDR now, no need to wait
     ESP_LOGI(TAG, "Client started playing, session=%lu", (unsigned long)client->session_id);
+    
+    // Send SPS/PPS/IDR immediately so decoder can start
+    // Use the timestamp of the stored IDR so it matches the stream timeline
+    uint32_t init_timestamp = server->idr_ts;
+    
+    if (server->sps_data && server->sps_size > 0) {
+        send_rtp_h264(server, client, server->sps_data, server->sps_size, init_timestamp, false);
+        ESP_LOGD(TAG, "Sent SPS to client (size=%d)", server->sps_size);
+    }
+    if (server->pps_data && server->pps_size > 0) {
+        send_rtp_h264(server, client, server->pps_data, server->pps_size, init_timestamp, false);
+        ESP_LOGD(TAG, "Sent PPS to client (size=%d)", server->pps_size);
+    }
+    if (server->idr_data && server->idr_size > 0) {
+        send_rtp_h264(server, client, server->idr_data, server->idr_size, init_timestamp, true);
+        ESP_LOGD(TAG, "Sent IDR to client (size=%d)", server->idr_size);
+    }
     
     return snprintf(response, RTSP_BUFFER_SIZE,
         RTSP_RESPONSE_OK
@@ -615,6 +695,12 @@ static void rtsp_server_task(void *arg)
             continue;
         }
         
+        ESP_LOGI(TAG, "Client connected from %s", inet_ntoa(client_addr.sin_addr));
+
+        // Set TCP_NODELAY to reduce latency
+        int flag = 1;
+        setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+        
         // Find free client slot
         xSemaphoreTake(server->clients_mutex, portMAX_DELAY);
         
@@ -780,6 +866,7 @@ esp_err_t rtsp_server_stop(rtsp_server_handle_t handle)
     vSemaphoreDelete(handle->clients_mutex);
     free(handle->sps_data);
     free(handle->pps_data);
+    free(handle->idr_data);
     free(handle);
     
     ESP_LOGI(TAG, "RTSP server stopped");
@@ -795,7 +882,8 @@ esp_err_t rtsp_server_feed_frame(rtsp_server_handle_t handle,
     }
     
     // Convert PTS to RTP timestamp (90kHz clock)
-    uint32_t rtp_timestamp = (uint32_t)((pts * 90) / 1000);
+    // PTS is in milliseconds
+    uint32_t rtp_timestamp = (uint32_t)(pts * 90);
     
     // Parse NAL units
     size_t offset = 0;
@@ -822,6 +910,18 @@ esp_err_t rtsp_server_feed_frame(rtsp_server_handle_t handle,
                 memcpy(handle->pps_data, nal, nal_size);
                 handle->pps_size = nal_size;
             }
+        } else if (nal_type == 5) {
+            // Store IDR frame for new clients
+            // Always update to keep the most recent IDR
+            if (handle->idr_data) free(handle->idr_data);
+            
+            handle->idr_data = malloc(nal_size);
+            if (handle->idr_data) {
+                memcpy(handle->idr_data, nal, nal_size);
+                handle->idr_size = nal_size;
+                handle->idr_ts = rtp_timestamp;
+                ESP_LOGD(TAG, "Stored IDR frame (size=%d)", nal_size);
+            }
         }
         
         // Check if this is the last NAL in the frame (for marker bit)
@@ -837,12 +937,7 @@ esp_err_t rtsp_server_feed_frame(rtsp_server_handle_t handle,
             
             if (client->state != CLIENT_STATE_PLAYING) continue;
             
-            // Skip non-keyframes if client needs keyframe
-            if (client->need_keyframe) {
-                if (!is_keyframe) continue;
-                client->need_keyframe = false;
-            }
-            
+            // SPS/PPS/IDR are sent on PLAY command, stream immediately
             send_rtp_h264(handle, client, nal, nal_size, rtp_timestamp, is_last_nal);
         }
         
