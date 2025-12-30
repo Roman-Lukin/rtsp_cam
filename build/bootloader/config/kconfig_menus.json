@@ -1513,16 +1513,6 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_AHB_GDMA_SUPPORT_PSRAM",
-        "name": "SOC_AHB_GDMA_SUPPORT_PSRAM",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
         "id": "SOC_AXI_GDMA_SUPPORT_PSRAM",
         "name": "SOC_AXI_GDMA_SUPPORT_PSRAM",
         "range": null,
@@ -1553,8 +1543,8 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_GDMA_EXT_MEM_ENC_ALIGNMENT",
-        "name": "SOC_GDMA_EXT_MEM_ENC_ALIGNMENT",
+        "id": "SOC_AXI_DMA_EXT_MEM_ENC_ALIGNMENT",
+        "name": "SOC_AXI_DMA_EXT_MEM_ENC_ALIGNMENT",
         "range": null,
         "title": null,
         "type": "int"
@@ -1783,26 +1773,6 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_GPIO_SUPPORT_FORCE_HOLD",
-        "name": "SOC_GPIO_SUPPORT_FORCE_HOLD",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
-        "id": "SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP",
-        "name": "SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
         "id": "SOC_GPIO_CLOCKOUT_BY_GPIO_MATRIX",
         "name": "SOC_GPIO_CLOCKOUT_BY_GPIO_MATRIX",
         "range": null,
@@ -1848,6 +1818,16 @@
         "range": null,
         "title": null,
         "type": "int"
+    },
+    {
+        "children": [],
+        "depends_on": null,
+        "help": null,
+        "id": "SOC_GPIO_SUPPORT_FORCE_HOLD",
+        "name": "SOC_GPIO_SUPPORT_FORCE_HOLD",
+        "range": null,
+        "title": null,
+        "type": "bool"
     },
     {
         "children": [],
@@ -2333,28 +2313,8 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_ISP_BLC_SUPPORTED",
-        "name": "SOC_ISP_BLC_SUPPORTED",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
         "id": "SOC_ISP_CCM_SUPPORTED",
         "name": "SOC_ISP_CCM_SUPPORTED",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
-        "id": "SOC_ISP_COLOR_SUPPORTED",
-        "name": "SOC_ISP_COLOR_SUPPORTED",
         "range": null,
         "title": null,
         "type": "bool"
@@ -2383,16 +2343,6 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_ISP_LSC_SUPPORTED",
-        "name": "SOC_ISP_LSC_SUPPORTED",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
         "id": "SOC_ISP_SHARPEN_SUPPORTED",
         "name": "SOC_ISP_SHARPEN_SUPPORTED",
         "range": null,
@@ -2403,8 +2353,18 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_ISP_WBG_SUPPORTED",
-        "name": "SOC_ISP_WBG_SUPPORTED",
+        "id": "SOC_ISP_COLOR_SUPPORTED",
+        "name": "SOC_ISP_COLOR_SUPPORTED",
+        "range": null,
+        "title": null,
+        "type": "bool"
+    },
+    {
+        "children": [],
+        "depends_on": null,
+        "help": null,
+        "id": "SOC_ISP_LSC_SUPPORTED",
+        "name": "SOC_ISP_LSC_SUPPORTED",
         "range": null,
         "title": null,
         "type": "bool"
@@ -2485,26 +2445,6 @@
         "help": null,
         "id": "SOC_ISP_AF_WINDOW_NUMS",
         "name": "SOC_ISP_AF_WINDOW_NUMS",
-        "range": null,
-        "title": null,
-        "type": "int"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
-        "id": "SOC_ISP_AWB_WINDOW_X_NUMS",
-        "name": "SOC_ISP_AWB_WINDOW_X_NUMS",
-        "range": null,
-        "title": null,
-        "type": "int"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
-        "id": "SOC_ISP_AWB_WINDOW_Y_NUMS",
-        "name": "SOC_ISP_AWB_WINDOW_Y_NUMS",
         "range": null,
         "title": null,
         "type": "int"
@@ -3073,8 +3013,8 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_RMT_SUPPORT_ASYNC_STOP",
-        "name": "SOC_RMT_SUPPORT_ASYNC_STOP",
+        "id": "SOC_RMT_SUPPORT_TX_ASYNC_STOP",
+        "name": "SOC_RMT_SUPPORT_TX_ASYNC_STOP",
         "range": null,
         "title": null,
         "type": "bool"
@@ -3773,26 +3713,6 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_ECC_CONSTANT_TIME_POINT_MUL",
-        "name": "SOC_ECC_CONSTANT_TIME_POINT_MUL",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
-        "id": "SOC_ECC_SUPPORT_CURVE_P384",
-        "name": "SOC_ECC_SUPPORT_CURVE_P384",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
         "id": "SOC_ECDSA_SUPPORT_EXPORT_PUBKEY",
         "name": "SOC_ECDSA_SUPPORT_EXPORT_PUBKEY",
         "range": null,
@@ -4135,26 +4055,6 @@
         "help": null,
         "id": "SOC_SPI_MEM_SUPPORT_CACHE_32BIT_ADDR_MAP",
         "name": "SOC_SPI_MEM_SUPPORT_CACHE_32BIT_ADDR_MAP",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
-        "id": "SOC_SPI_MEM_PSRAM_FREQ_AXI_CONSTRAINED",
-        "name": "SOC_SPI_MEM_PSRAM_FREQ_AXI_CONSTRAINED",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
-        "id": "SOC_SPI_MEM_SUPPORT_TSUS_TRES_SEPERATE_CTR",
-        "name": "SOC_SPI_MEM_SUPPORT_TSUS_TRES_SEPERATE_CTR",
         "range": null,
         "title": null,
         "type": "bool"
@@ -5113,16 +5013,6 @@
         "children": [],
         "depends_on": null,
         "help": null,
-        "id": "SOC_PM_SUPPORT_CPU_PD",
-        "name": "SOC_PM_SUPPORT_CPU_PD",
-        "range": null,
-        "title": null,
-        "type": "bool"
-    },
-    {
-        "children": [],
-        "depends_on": null,
-        "help": null,
         "id": "SOC_PM_SUPPORT_XTAL32K_PD",
         "name": "SOC_PM_SUPPORT_XTAL32K_PD",
         "range": null,
@@ -5245,6 +5135,16 @@
         "help": null,
         "id": "SOC_PAU_IN_TOP_DOMAIN",
         "name": "SOC_PAU_IN_TOP_DOMAIN",
+        "range": null,
+        "title": null,
+        "type": "bool"
+    },
+    {
+        "children": [],
+        "depends_on": null,
+        "help": null,
+        "id": "SOC_CPU_IN_TOP_DOMAIN",
+        "name": "SOC_CPU_IN_TOP_DOMAIN",
         "range": null,
         "title": null,
         "type": "bool"
@@ -5455,6 +5355,16 @@
         "help": null,
         "id": "SOC_MEM_TCM_SUPPORTED",
         "name": "SOC_MEM_TCM_SUPPORTED",
+        "range": null,
+        "title": null,
+        "type": "bool"
+    },
+    {
+        "children": [],
+        "depends_on": null,
+        "help": null,
+        "id": "SOC_MEM_NON_CONTIGUOUS_SRAM",
+        "name": "SOC_MEM_NON_CONTIGUOUS_SRAM",
         "range": null,
         "title": null,
         "type": "bool"
@@ -5925,7 +5835,7 @@
                     }
                 ],
                 "depends_on": null,
-                "help": "Select the way the application is built.\n\nBy default, the application is built as a binary file in a format compatible with\nthe ESP-IDF bootloader. In addition to this application, 2nd stage bootloader is\nalso built. Application and bootloader binaries can be written into flash and\nloaded/executed from there.\n\nAnother option, useful for only very small and limited applications, is to only link\nthe .elf file of the application, such that it can be loaded directly into RAM over\nJTAG or UART. Note that since IRAM and DRAM sizes are very limited, it is not possible\nto build any complex application this way. However for some kinds of testing and debugging,\nthis option may provide faster iterations, since the application does not need to be\nwritten into flash.\n\nNote: when APP_BUILD_TYPE_RAM is selected and loaded with JTAG, ESP-IDF does not contain\nall the startup code required to initialize the CPUs and ROM memory (data/bss).\nTherefore it is necessary to execute a bit of ROM code prior to executing the application.\nA gdbinit file may look as follows (for ESP32):\n\n    # Connect to a running instance of OpenOCD\n    target remote :3333\n    # Reset and halt the target\n    mon reset halt\n    # Run to a specific point in ROM code,\n    #  where most of initialization is complete.\n    thb *0x40007d54\n    c\n    # Load the application into RAM\n    load\n    # Run till app_main\n    tb app_main\n    c\n\nExecute this gdbinit file as follows:\n\n    xtensa-esp32-elf-gdb build/app-name.elf -x gdbinit\n\nExample gdbinit files for other targets can be found in tools/test_apps/system/gdb_loadable_elf/\n\nWhen loading the BIN with UART, the ROM will jump to ram and run the app after finishing the ROM\nstartup code, so there's no additional startup initialization required. You can use the\n`load_ram` in esptool.py to load the generated .bin file into ram and execute.\n\nExample:\n    esptool.py --chip {chip} -p {port} -b {baud} --no-stub load_ram {app.bin}\n\nRecommended sdkconfig.defaults for building loadable ELF files is as follows.\nCONFIG_APP_BUILD_TYPE_RAM is required, other options help reduce application\nmemory footprint.\n\n    CONFIG_APP_BUILD_TYPE_RAM=y\n    CONFIG_VFS_SUPPORT_TERMIOS=\n    CONFIG_LIBC_NEWLIB_NANO_FORMAT=y\n    CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y\n    CONFIG_ESP_DEBUG_STUBS_ENABLE=\n    CONFIG_ESP_ERR_TO_NAME_LOOKUP=",
+                "help": "Select the way the application is built.\n\nBy default, the application is built as a binary file in a format compatible with\nthe ESP-IDF bootloader. In addition to this application, 2nd stage bootloader is\nalso built. Application and bootloader binaries can be written into flash and\nloaded/executed from there.\n\nAnother option, useful for only very small and limited applications, is to only link\nthe .elf file of the application, such that it can be loaded directly into RAM over\nJTAG or UART. Note that since IRAM and DRAM sizes are very limited, it is not possible\nto build any complex application this way. However for some kinds of testing and debugging,\nthis option may provide faster iterations, since the application does not need to be\nwritten into flash.\n\nNote: when APP_BUILD_TYPE_RAM is selected and loaded with JTAG, ESP-IDF does not contain\nall the startup code required to initialize the CPUs and ROM memory (data/bss).\nTherefore it is necessary to execute a bit of ROM code prior to executing the application.\nA gdbinit file may look as follows (for ESP32):\n\n    # Connect to a running instance of OpenOCD\n    target remote :3333\n    # Reset and halt the target\n    mon reset halt\n    # Run to a specific point in ROM code,\n    #  where most of initialization is complete.\n    thb *0x40007d54\n    c\n    # Load the application into RAM\n    load\n    # Run till app_main\n    tb app_main\n    c\n\nExecute this gdbinit file as follows:\n\n    xtensa-esp32-elf-gdb build/app-name.elf -x gdbinit\n\nExample gdbinit files for other targets can be found in tools/test_apps/system/gdb_loadable_elf/\n\nWhen loading the BIN with UART, the ROM will jump to ram and run the app after finishing the ROM\nstartup code, so there's no additional startup initialization required. You can use the\n`load_ram` in esptool.py to load the generated .bin file into ram and execute.\n\nExample:\n    esptool.py --chip {chip} -p {port} -b {baud} --no-stub load_ram {app.bin}\n\nRecommended sdkconfig.defaults for building loadable ELF files is as follows.\nCONFIG_APP_BUILD_TYPE_RAM is required, other options help reduce application\nmemory footprint.\n\n    CONFIG_APP_BUILD_TYPE_RAM=y\n    CONFIG_VFS_SUPPORT_TERMIOS=\n    CONFIG_NEWLIB_NANO_FORMAT=y\n    CONFIG_ESP_SYSTEM_PANIC_PRINT_HALT=y\n    CONFIG_ESP_DEBUG_STUBS_ENABLE=\n    CONFIG_ESP_ERR_TO_NAME_LOOKUP=",
                 "id": "build-type-application-build-type",
                 "name": "APP_BUILD_TYPE",
                 "title": "Application build type",
@@ -7394,16 +7304,6 @@
                     },
                     {
                         "children": [],
-                        "depends_on": "SOC_ECDSA_SUPPORT_CURVE_P384 && SOC_FLASH_ENCRYPTION_XTS_AES_SUPPORT_PSEUDO_ROUND",
-                        "help": "If not set (default, recommended), on the first boot when Secure Boot is enabled for\ntargets that support Secure Boot using ECDSA-P384, the bootloader will burn the write-protection bit of\nof SECURE_BOOT_SHA384_EN that could be shared by multiple other efuse bits like\nSECURE_FLASH_PSEUDO_ROUND_FUNC_STRENGTH / XTS_DPA_PSEUDO_LEVEL.\n\nOnce this efuse bit is write-protected you cannot update the values of the shared efuses, for example,\nthe security strength value of XTS_DPA_PSEUDO_LEVEL or setting ECC_FORCE_CONST_TIME.\n\nList of eFuses with the same write protection bit:\n\nESP32-C5: XTS_DPA_PSEUDO_LEVEL and ECC_FORCE_CONST_TIME",
-                        "id": "SECURE_BOOT_SKIP_WRITE_PROTECTION_SCA",
-                        "name": "SECURE_BOOT_SKIP_WRITE_PROTECTION_SCA",
-                        "range": null,
-                        "title": "Skip write-protection of SECURE_FLASH_PSEUDO_ROUND_FUNC_STRENGTH",
-                        "type": "bool"
-                    },
-                    {
-                        "children": [],
                         "depends_on": "SECURE_FLASH_ENCRYPTION_MODE_DEVELOPMENT",
                         "help": "If not set (default), the bootloader will permanently disable UART bootloader encryption access on\nfirst boot. If set, the UART bootloader will still be able to access hardware encryption.\n\nIt is recommended to only set this option in testing environments.",
                         "id": "SECURE_FLASH_UART_BOOTLOADER_ALLOW_ENC",
@@ -7465,7 +7365,7 @@
                 "id": "SECURE_FLASH_ENCRYPT_ONLY_IMAGE_LEN_IN_APP_PART",
                 "name": "SECURE_FLASH_ENCRYPT_ONLY_IMAGE_LEN_IN_APP_PART",
                 "range": null,
-                "title": "Encrypt contents upto app image length in app partition",
+                "title": "Encrypt only the app image that is present in the partition of type app",
                 "type": "bool"
             },
             {
@@ -7514,14 +7414,14 @@
                             }
                         ],
                         "depends_on": "SECURE_FLASH_PSEUDO_ROUND_FUNC",
-                        "help": "The strength of the pseudo rounds functions can be configured to low, medium and high,\neach denoting the values that would be stored in the efuses field.\nBy default the value to set to low.\n\nIt is recommended that the required strength of the pseudo rounds function should be set during the\nfirst boot itself. If your workflow needs to update the function's strength after the first boot,\nyou should enable CONFIG_SECURE_BOOT_SKIP_WRITE_PROTECTION_SCA to avoid write protecting this\nbit during the boot up for targets that support Secure Boot using ECDSA-P384.\n\nYou can configure the strength of the pseudo rounds functions according to your use cases,\nfor example, increasing the strength would provide higher security but would slow down the\nflash encryption/decryption operations.\nFor more info regarding the performance impact, please checkout the pseudo round function section of the\nsecurity guide documentation.",
+                        "help": "The strength of the pseudo rounds functions can be configured to low, medium and high,\neach denoting the values that would be stored in the efuses field.\nBy default the value to set to low.\nYou can configure the strength of the pseudo rounds functions according to your use cases,\nfor example, increasing the strength would provide higher security but would slow down the\nflash encryption/decryption operations.\nFor more info regarding the performance impact, please checkout the pseudo round function section of the\nsecurity guide documentation.",
                         "id": "security-features-permanently-enable-xts-aes-s-pseudo-rounds-function-strength-of-the-pseudo-rounds-function",
                         "name": "SECURE_FLASH_PSEUDO_ROUND_FUNC_STRENGTH",
                         "title": "Strength of the pseudo rounds function",
                         "type": "choice"
                     }
                 ],
-                "depends_on": "SECURE_FLASH_ENC_ENABLED && SOC_FLASH_ENCRYPTION_XTS_AES_SUPPORT_PSEUDO_ROUND",
+                "depends_on": "SECURE_FLASH_ENCRYPTION_MODE_RELEASE && SOC_FLASH_ENCRYPTION_XTS_AES_SUPPORT_PSEUDO_ROUND",
                 "help": "If set (default), the bootloader will permanently enable the XTS-AES peripheral's pseudo rounds function.\nNote: Enabling this config would burn an efuse.",
                 "id": "SECURE_FLASH_PSEUDO_ROUND_FUNC",
                 "name": "SECURE_FLASH_PSEUDO_ROUND_FUNC",
@@ -9087,20 +8987,10 @@
                     {
                         "children": [
                             {
-                                "children": [],
-                                "depends_on": null,
-                                "help": "Select this option to support ESP32-P4 revisions 0.x and 1.x.\nRevisions higher than 3.0 (included) and revisions less than 3.0\nhave huge hardware difference.\nRevisions higher than 3.0 (included) is not compatible with 0.x and 1.x.",
-                                "id": "ESP32P4_SELECTS_REV_LESS_V3",
-                                "name": "ESP32P4_SELECTS_REV_LESS_V3",
-                                "range": null,
-                                "title": "Select ESP32-P4 revisions <3.0 (No >=3.x Support)",
-                                "type": "bool"
-                            },
-                            {
                                 "children": [
                                     {
                                         "children": [],
-                                        "depends_on": "ESP32P4_SELECTS_REV_LESS_V3 && <choice ESP32P4_REV_MIN>",
+                                        "depends_on": "<choice ESP32P4_REV_MIN>",
                                         "help": null,
                                         "id": "ESP32P4_REV_MIN_0",
                                         "name": "ESP32P4_REV_MIN_0",
@@ -9110,7 +9000,7 @@
                                     },
                                     {
                                         "children": [],
-                                        "depends_on": "ESP32P4_SELECTS_REV_LESS_V3 && <choice ESP32P4_REV_MIN>",
+                                        "depends_on": "<choice ESP32P4_REV_MIN>",
                                         "help": null,
                                         "id": "ESP32P4_REV_MIN_1",
                                         "name": "ESP32P4_REV_MIN_1",
@@ -9120,22 +9010,12 @@
                                     },
                                     {
                                         "children": [],
-                                        "depends_on": "ESP32P4_SELECTS_REV_LESS_V3 && <choice ESP32P4_REV_MIN>",
+                                        "depends_on": "<choice ESP32P4_REV_MIN>",
                                         "help": null,
                                         "id": "ESP32P4_REV_MIN_100",
                                         "name": "ESP32P4_REV_MIN_100",
                                         "range": null,
                                         "title": "Rev v1.0",
-                                        "type": "bool"
-                                    },
-                                    {
-                                        "children": [],
-                                        "depends_on": "!ESP32P4_SELECTS_REV_LESS_V3 && <choice ESP32P4_REV_MIN>",
-                                        "help": null,
-                                        "id": "ESP32P4_REV_MIN_300",
-                                        "name": "ESP32P4_REV_MIN_300",
-                                        "range": null,
-                                        "title": "Rev v3.0",
                                         "type": "bool"
                                     }
                                 ],
@@ -9425,7 +9305,7 @@
                             {
                                 "children": [],
                                 "depends_on": null,
-                                "help": "All existing chips except esp32 and esp32s2 will reset on wake-up if a GPIO receives\na small electrostatic pulse during light sleep, with specific conditions.\n\n- GPIO needs to be configured as input-mode only\n- The pin receives a small electrostatic pulse, and reset occurs when the pulse\n  voltage is higher than 6 V\n\nFor GPIO set to input mode only, it is not a good practice to leave it open/floating,\nThe hardware design needs to controlled it with determined supply or ground voltage\nis necessary.\n\nThis option provides a software workaround for this issue. Configure to isolate all\nGPIO pins in sleep state.",
+                                "help": "esp32c2, esp32c3, esp32s3, esp32c5, esp32c6 and esp32h2 will reset at wake-up if GPIO is received\na small electrostatic pulse during light sleep, with specific condition\n\n- GPIO needs to be configured as input-mode only\n- The pin receives a small electrostatic pulse, and reset occurs when the pulse\n  voltage is higher than 6 V\n\nFor GPIO set to input mode only, it is not a good practice to leave it open/floating,\nThe hardware design needs to controlled it with determined supply or ground voltage\nis necessary.\n\nThis option provides a software workaround for this issue. Configure to isolate all\nGPIO pins in sleep state.",
                                 "id": "ESP_SLEEP_GPIO_RESET_WORKAROUND",
                                 "name": "ESP_SLEEP_GPIO_RESET_WORKAROUND",
                                 "range": null,
@@ -9813,20 +9693,31 @@
                     {
                         "children": [
                             {
-                                "children": [],
-                                "depends_on": "SOC_DCDC_SUPPORTED",
-                                "help": "This value determines the voltage of the DCDC chip during sleep. The same parameter value may\ncorrespond to different voltage values on different models of DCDC chips. Please update this\nvalue according to the model of external DCDC selected in your hardware solution.\n\nFor the DCDC chip model recommended by ESP, the recommended configuration\nvalues are listed below:\n\n- TI-TLV62569/TLV62569P: 14",
-                                "id": "ESP_SLEEP_DCM_VSET_VAL_IN_SLEEP",
-                                "name": "ESP_SLEEP_DCM_VSET_VAL_IN_SLEEP",
-                                "range": [
-                                    0,
-                                    31
+                                "children": [
+                                    {
+                                        "children": [],
+                                        "depends_on": "ESP_SLEEP_KEEP_DCDC_ALWAYS_ON && SOC_GP_LDO_SUPPORTED",
+                                        "help": "This value determines the voltage of the DCDC chip during sleep. The same parameter value may\ncorrespond to different voltage values on different models of DCDC chips. Please update this\nvalue according to the model of external DCDC selected in your hardware solution.\n\nFor the DCDC chip model recommended by ESP, the recommended configuration\nvalues are listed below:\n\n- TI-TLV62569/TLV62569P: 14",
+                                        "id": "ESP_SLEEP_DCM_VSET_VAL_IN_SLEEP",
+                                        "name": "ESP_SLEEP_DCM_VSET_VAL_IN_SLEEP",
+                                        "range": [
+                                            0,
+                                            31
+                                        ],
+                                        "title": "DCDC voltage parameter during sleep",
+                                        "type": "int"
+                                    }
                                 ],
-                                "title": "DCDC voltage parameter during sleep",
-                                "type": "int"
+                                "depends_on": "SOC_GP_LDO_SUPPORTED",
+                                "help": "ESP32P4 will switch the power supply to LDO before sleeping, and switch to DCDC after waking up.\nThese two processes take a long time and may bring some risks for some short duration\nlight sleep. (DCDC -> LDO: 2.5ms (max), LDO -> DCDC: 1.2 ms)\nEnabling this option will make chip powered by DCDC during light sleep to reduce some power switch\nrisks, this will also increase the power consumption during the light sleep.\n\nDO NOT DISABLE UNLESS YOU KNOW WHAT YOU ARE DOING.",
+                                "id": "ESP_SLEEP_KEEP_DCDC_ALWAYS_ON",
+                                "name": "ESP_SLEEP_KEEP_DCDC_ALWAYS_ON",
+                                "range": null,
+                                "title": "Keep DC-DC power always on during light-sleep",
+                                "type": "bool"
                             }
                         ],
-                        "depends_on": "SOC_DCDC_SUPPORTED",
+                        "depends_on": "SOC_GP_LDO_SUPPORTED",
                         "id": "component-config-hardware-settings-dcdc-regulator-configurations",
                         "title": "DCDC Regulator Configurations",
                         "type": "menu"
@@ -9908,10 +9799,10 @@
                                                 "children": [],
                                                 "depends_on": "<choice ESP_LDO_VOLTAGE_PSRAM_DOMAIN>",
                                                 "help": null,
-                                                "id": "ESP_LDO_VOLTAGE_PSRAM_1800_MV",
-                                                "name": "ESP_LDO_VOLTAGE_PSRAM_1800_MV",
+                                                "id": "ESP_LDO_VOLTAGE_PSRAM_1900_MV",
+                                                "name": "ESP_LDO_VOLTAGE_PSRAM_1900_MV",
                                                 "range": null,
-                                                "title": "1.8V",
+                                                "title": "1.9V",
                                                 "type": "bool"
                                             }
                                         ],
@@ -10313,26 +10204,6 @@
                         "range": null,
                         "title": "Place esp_intr_alloc functions in IRAM",
                         "type": "bool"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": "IDF_TARGET_ESP32P4",
-                        "help": null,
-                        "id": "P4_REV3_MSPI_CRASH_AFTER_POWER_UP_WORKAROUND",
-                        "name": "P4_REV3_MSPI_CRASH_AFTER_POWER_UP_WORKAROUND",
-                        "range": null,
-                        "title": null,
-                        "type": "bool"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": "IDF_TARGET_ESP32P4",
-                        "help": null,
-                        "id": "P4_REV3_MSPI_WORKAROUND_SIZE",
-                        "name": "P4_REV3_MSPI_WORKAROUND_SIZE",
-                        "range": null,
-                        "title": null,
-                        "type": "hex"
                     }
                 ],
                 "depends_on": null,
@@ -10432,7 +10303,7 @@
                     {
                         "children": [],
                         "depends_on": "SOC_ECC_CONSTANT_TIME_POINT_MUL",
-                        "help": "If enabled, the app startup code will burn the ECC_FORCE_CONST_TIME efuse bit to force the\nECC peripheral to always perform constant time point multiplication operations,\nirrespective of the ECC_MULT_SECURITY_MODE status bit that is present in the ECC_MULT_CONF_REG\nregister. By default, ESP-IDF configures the ECC peripheral to perform constant time point\nmultiplication operations, so enabling this config would provide security enhancement only in\nthe cases when trusted boot is not enabled and the attacker tries carrying out non-constant\ntime point multiplication operations by changing the default ESP-IDF configurations.\nPerforming constant time operations protect the ECC multiplication operations from timing attacks.\n\nFor targets that support Secure Boot using ECDSA-P384, the write-protection bit of the efuse\nbit could be shared by multiple other efuse bits and can be programmed by the application when\nSecure Boot is enabled.\nThus, you could select CONFIG_SECURE_BOOT_SKIP_WRITE_PROTECTION_SCA, in case you would like\nto skip the write-protection of the efuse bit.",
+                        "help": "If enabled, the app startup code will burn the ECC_FORCE_CONST_TIME efuse bit to force the\nECC peripheral to always perform constant time point multiplication operations,\nirrespective of the ECC_MULT_SECURITY_MODE status bit that is present in the ECC_MULT_CONF_REG\nregister. By default, ESP-IDF configures the ECC peripheral to perform constant time point\nmultiplication operations, so enabling this config would provide security enhancement only in\nthe cases when trusted boot is not enabled and the attacker tries carrying out non-constant\ntime point multiplication operations by changing the default ESP-IDF configurations.\nPerforming constant time operations protect the ECC multiplication operations from timing attacks.",
                         "id": "ESP_CRYPTO_FORCE_ECC_CONSTANT_TIME_POINT_MUL",
                         "name": "ESP_CRYPTO_FORCE_ECC_CONSTANT_TIME_POINT_MUL",
                         "range": null,
@@ -10471,22 +10342,12 @@
                             },
                             {
                                 "children": [],
-                                "depends_on": "ESP32P4_SELECTS_REV_LESS_V3 && <choice ESP_DEFAULT_CPU_FREQ_MHZ>",
+                                "depends_on": "<choice ESP_DEFAULT_CPU_FREQ_MHZ>",
                                 "help": null,
                                 "id": "ESP_DEFAULT_CPU_FREQ_MHZ_360",
                                 "name": "ESP_DEFAULT_CPU_FREQ_MHZ_360",
                                 "range": null,
                                 "title": "360 MHz",
-                                "type": "bool"
-                            },
-                            {
-                                "children": [],
-                                "depends_on": "<choice ESP_DEFAULT_CPU_FREQ_MHZ>",
-                                "help": null,
-                                "id": "ESP_DEFAULT_CPU_FREQ_MHZ_400",
-                                "name": "ESP_DEFAULT_CPU_FREQ_MHZ_400",
-                                "range": null,
-                                "title": "400 MHz",
                                 "type": "bool"
                             }
                         ],
@@ -13347,7 +13208,7 @@
                             },
                             {
                                 "children": [],
-                                "depends_on": "SOC_SPI_MEM_SUPPORT_TSUS_TRES_SEPERATE_CTR && !ESP32P4_SELECTS_REV_LESS_V3 && !APP_BUILD_TYPE_PURE_RAM_APP",
+                                "depends_on": "SOC_SPI_MEM_SUPPORT_TSUS_TRES_SEPERATE_CTR && !APP_BUILD_TYPE_PURE_RAM_APP",
                                 "help": "This config is used for setting Trs parameter. Trs means CS Latency Between Resume And Next Suspend.\nYou can refer to the chapter of AC CHARACTERISTICS of flash datasheet.\nFor high-performance scenarios, some flash chips allow this set value to be smaller than the\ngiven value in the datasheet without causing errors in the flash state machine.\nWhen you have any related needs, please contact espressif business team.",
                                 "id": "SPI_FLASH_SUSPEND_TRS_VAL_US",
                                 "name": "SPI_FLASH_SUSPEND_TRS_VAL_US",
@@ -13730,16 +13591,6 @@
                         "name": "SPI_FLASH_ENABLE_ENCRYPTED_READ_WRITE",
                         "range": null,
                         "title": "Enable encrypted partition read/write operations",
-                        "type": "bool"
-                    },
-                    {
-                        "children": [],
-                        "depends_on": "!APP_BUILD_TYPE_PURE_RAM_APP",
-                        "help": "Enable frequency limit workaround for encrypted flash writes on ESP32-C5 at 240MHz default CPU frequency.\nThis is an internal configuration, automatically set based on target chip and CPU frequency.",
-                        "id": "SPI_FLASH_FREQ_LIMIT_C5_240MHZ",
-                        "name": "SPI_FLASH_FREQ_LIMIT_C5_240MHZ",
-                        "range": null,
-                        "title": null,
                         "type": "bool"
                     }
                 ],

@@ -1,4 +1,4 @@
-/* * Data converted from C:/MyProgs/ESP32/rtsp_cam/build/esp-idf/mbedtls/x509_crt_bundle
+/* * Data converted from /Users/workbook/projects/esp/rtsp_cam/build/esp-idf/mbedtls/x509_crt_bundle
  */
 .data
 #if !defined (__APPLE__) && !defined (__linux__)

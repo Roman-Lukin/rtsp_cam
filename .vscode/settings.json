@@ -1,7 +1,7 @@
 {
   "idf.espIdfPathWin": "c:\\Work_API\\v5.5\\esp-idf",
   "idf.toolsPathWin": "c:\\Work_API\\ESP_IDF_TOOLS",
-  "idf.pythonInstallPath": "c:\\Work_API\\ESP_IDF_TOOLS\\tools\\idf-python\\3.11.2\\python.exe",
+  "idf.pythonInstallPath": "/usr/bin/python3",
   "idf.openOcdConfigs": [
     "board/esp32p4-ftdi.cfg"
   ],
@@ -16,5 +16,7 @@
     "--query-driver=**",
     "--compile-commands-dir=c:\\MyProgs\\ESP32\\rtsp_cam\\build"
   ],
-  "idf.portWin": "COM1"
+  "idf.portWin": "COM1",
+  "idf.port": "/dev/tty.usbserial-0001",
+  "idf.flashType": "UART"
 }

@@ -1,2 +1,2 @@
-source C:/MyProgs/ESP32/rtsp_cam/build/gdbinit/symbols
-source C:/MyProgs/ESP32/rtsp_cam/build/gdbinit/connect
+source /Users/workbook/projects/esp/rtsp_cam/build/gdbinit/symbols
+source /Users/workbook/projects/esp/rtsp_cam/build/gdbinit/connect

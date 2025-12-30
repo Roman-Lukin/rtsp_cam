@@ -2,34 +2,34 @@
 	"sources" : 
 	[
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/CMakeFiles/bootloader"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/CMakeFiles/bootloader"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/CMakeFiles/bootloader.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/CMakeFiles/bootloader.rule"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/CMakeFiles/bootloader-complete.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/CMakeFiles/bootloader-complete.rule"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule"
 		},
 		{
-			"file" : "C:/MyProgs/ESP32/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule"
+			"file" : "/Users/workbook/projects/esp/rtsp_cam/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule"
 		}
 	],
 	"target" : 

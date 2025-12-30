@@ -1,41 +1,25 @@
 /*
-
  * SPDX-FileCopyrightText: 2022 Espressif Systems (Shanghai) CO LTD
-
  *
-
  * SPDX-License-Identifier: Apache-2.0
-
  */
 /*
-
  * Automatically generated file. DO NOT EDIT.
-
- * Espressif IoT Development Framework (ESP-IDF) 5.5.2 Configuration Header
-
+ * Espressif IoT Development Framework (ESP-IDF) 5.5.1 Configuration Header
  */
        
 /* List of deprecated options */
 /*
-
  * SPDX-FileCopyrightText: 2021-2024 Espressif Systems (Shanghai) CO LTD
-
  *
-
  * SPDX-License-Identifier: Apache-2.0
-
  */
 /* CPU instruction prefetch padding size for flash mmap scenario */
 /*
-
  * PMP region granularity size
-
  * Software may determine the PMP granularity by writing zero to pmp0cfg, then writing all ones
-
  * to pmpaddr0, then reading back pmpaddr0. If G is the index of the least-significant bit set,
-
  * the PMP granularity is 2^G+2 bytes.
-
  */
 /* CPU instruction prefetch padding size for memory protection scenario */
 /* Memory alignment size for PMS */
@@ -45,20 +29,14 @@ ENTRY(call_start_cpu0);
 SECTIONS
 {
   /**
-
    * RTC fast memory holds RTC wake stub code,
-
    * including from any source file named rtc_wake_stub*.c
-
    */
   .rtc.text :
   {
     /* Align the start of RTC code region as per PMP granularity
-
      * this ensures we do not overwrite the permissions for the previous
-
      * region (ULP mem/RTC reserved) regardless of their end alignment
-
      */
     
  . = ALIGN(128); 
@@ -77,13 +55,9 @@ SECTIONS
  _rtc_text_end = ABSOLUTE(.);
   } > lp_ram_seg
   /**
-
    * This section located in RTC FAST Memory area.
-
    * It holds data marked with RTC_FAST_ATTR attribute.
-
    * See the file "esp_attr.h" for more information.
-
    */
   .rtc.force_fast :
   {
@@ -98,15 +72,10 @@ SECTIONS
  _rtc_force_fast_end = ABSOLUTE(.);
   } > lp_ram_seg
   /**
-
    * RTC data section holds RTC wake stub
-
    * data/rodata, including from any source file
-
    * named rtc_wake_stub*.c and the data marked with
-
    * RTC_DATA_ATTR, RTC_RODATA_ATTR attributes.
-
    */
   .rtc.data :
   {
@@ -127,15 +96,10 @@ SECTIONS
     _rtc_bss_end = ABSOLUTE(.);
   } > lp_ram_seg
   /**
-
    * This section holds data that should not be initialized at power up
-
    * and will be retained during deep sleep.
-
    * User data marked with RTC_NOINIT_ATTR will be placed
-
    * into this section. See the file "esp_attr.h" for more information.
-
    */
   .rtc_noinit (NOLOAD):
   {
@@ -148,13 +112,9 @@ SECTIONS
  _rtc_noinit_end = ABSOLUTE(.);
   } > lp_ram_seg
   /**
-
    * This section located in RTC SLOW Memory area.
-
    * It holds data marked with RTC_SLOW_ATTR attribute.
-
    * See the file "esp_attr.h" for more information.
-
    */
   .rtc.force_slow :
   {
@@ -167,13 +127,9 @@ SECTIONS
  _rtc_force_slow_end = ABSOLUTE(.);
   } > lp_ram_seg
   /**
-
    * This section holds RTC data that should have fixed addresses.
-
    * The data are not initialized at power-up and are retained during deep
-
    * sleep.
-
    */
   .rtc_reserved (NOLOAD):
   {
@@ -183,15 +139,10 @@ SECTIONS
     KEEP(*(.bootloader_data_rtc_mem .bootloader_data_rtc_mem.*))
     *(.rtc_timer_data_in_rtc_mem .rtc_timer_data_in_rtc_mem.*)
     /**
-
      * New data can only be added here to ensure existing data are not moved.
-
      * Because data have adhered to the beginning of the segment and code is relied
-
      * on it.
-
      * >> put new data here <<
-
      */
     _rtc_reserved_end = ABSOLUTE(.);
   } > rtc_reserved_seg
@@ -289,15 +240,10 @@ SECTIONS
     _data_end_high = ABSOLUTE(.);
   } > sram_high
   /**
-
    * This section holds data that should not be initialized at power up.
-
    * The section located in Internal SRAM memory region. The macro _NOINIT
-
    * can be used as attribute to place data into this section.
-
    * See the "esp_attr.h" file for more information.
-
    */
   .noinit (NOLOAD):
   {
@@ -313,11 +259,8 @@ SECTIONS
   {
     _stext = .;
     /**
-
      * Mark the start of flash.text.
-
      * This can be used by the MMU driver to maintain the virtual address.
-
      */
     _instruction_reserved_start = ABSOLUTE(.);
     _text_start = ABSOLUTE(.);
@@ -328,44 +271,29 @@ SECTIONS
     *(.gnu.warning)
     *(.irom0.text) /* catch stray ICACHE_RODATA_ATTR */
     /**
-
      * CPU will try to prefetch up to 16 bytes of of instructions.
-
      * This means that any configuration (e.g. MMU, PMS) must allow
-
      * safe access to up to 16 bytes after the last real instruction, add
-
      * dummy bytes to ensure this
-
      */
     . += 16;
     _text_end = ABSOLUTE(.);
     /**
-
      * Mark the flash.text end.
-
      * This can be used for MMU driver to maintain virtual address.
-
      */
     _instruction_reserved_end = ABSOLUTE(.);
     _etext = .;
     /**
-
      * Similar to _iram_start, this symbol goes here so it is
-
      * resolved by addr2line in preference to the first symbol in
-
      * the flash.text segment.
-
      */
     _flash_cache_start = ABSOLUTE(0);
   } > text_seg_low
   /**
-
    * Dummy section represents the .flash.text section but in default_rodata_seg.
-
    * Thus, it must have its alignment and (at least) its size.
-
    */
   .flash_rodata_dummy (NOLOAD):
   {
@@ -377,11 +305,8 @@ SECTIONS
   .flash.appdesc : ALIGN(0x10)
   {
     /**
-
      * Mark flash.rodata start.
-
      * This can be used for mmu driver to maintain virtual address
-
      */
     _rodata_reserved_start = ABSOLUTE(.);
     _rodata_start = ABSOLUTE(.);
@@ -391,13 +316,9 @@ SECTIONS
     /* Should be the second. Custom app version info. */
     *(.rodata_custom_desc .rodata_custom_desc.*)
     /**
-
      * Create an empty gap within this section. Thanks to this, the end of this
-
      * section will match .flash.rodata's begin address. Thus, both sections
-
      * will be merged when creating the final bin image.
-
      */
     . = ALIGN(ALIGNOF(.flash.rodata));
   } > rodata_seg_low
@@ -418,29 +339,17 @@ SECTIONS
   .flash.init_array :
   {
     /**
-
      * C++ constructor tables.
-
      *
-
      * Excluding crtbegin.o/crtend.o since IDF doesn't use the toolchain crt.
-
      *
-
      * RISC-V gcc is configured with --enable-initfini-array so it emits
-
      * .init_array section instead. But the init_priority sections will be
-
      * sorted for iteration in ascending order during startup.
-
      * The rest of the init_array sections is sorted for iteration in descending
-
      * order during startup, however. Hence a different section is generated for
-
      * the init_priority functions which is iterated in ascending order during
-
      * startup. The corresponding code can be found in startup.c.
-
      */
     
  . = ALIGN(4); 
@@ -484,22 +393,15 @@ SECTIONS
     _thread_local_bss_end = ABSOLUTE(.);
   } > rodata_seg_low
   /**
-
    * This section contains all the rodata that is not used
-
    * at runtime, helping to avoid an increase in binary size.
-
    */
   .flash.rodata_noload (NOLOAD) :
   {
     /**
-
      * This symbol marks the end of flash.rodata. It can be utilized by the MMU
-
      * driver to maintain the virtual address.
-
      * NOLOAD rodata may not be included in this section.
-
      */
     _rodata_reserved_end = ADDR(.flash.tbss);
     arrays[rodata_noload]
@@ -511,11 +413,8 @@ SECTIONS
  . = ALIGN(4); 
  _bss_start_low = ABSOLUTE(.);
     /**
-
      * ldgen places all bss-related data to mapping[dram0_bss]
-
      * (See components/esp_system/app.lf).
-
      */
     arrays[dram0_bss]
     mapping[dram0_bss]
@@ -529,11 +428,8 @@ SECTIONS
  . = ALIGN(4); 
  _bss_start_high = ABSOLUTE(.);
     /**
-
      * ldgen places all bss-related data to mapping[dram0_bss]
-
      * (See components/esp_system/app.lf).
-
      */
     mapping[dram0_bss]
     
@@ -555,11 +451,8 @@ SECTIONS
  _heap_start_high = ABSOLUTE(.);
   } > sram_high
   /**
-
    * This section is not included in the binary image; it is only present in the ELF file.
-
    * It is used to keep certain symbols in the ELF file.
-
    */
   .noload 0 (INFO) :
   {
@@ -612,15 +505,10 @@ SECTIONS
   /DISCARD/ :
   {
    /**
-
     * Discarding .rela.* sections results in the following mapping:
-
     * .rela.text.* -> .text.*
-
     * .rela.data.* -> .data.*
-
     * And so forth...
-
     */
    *(.rela.*)
    *(.got .got.plt) /* TODO: GCC-382 */
