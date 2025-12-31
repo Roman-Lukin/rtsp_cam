@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/videodev2.h>
+#include "esp_video_isp_ioctl.h"
 
 #include "rtsp_server.h"
 
@@ -309,6 +310,7 @@ static void setup_camera_controls(void)
 
     // 4. Manual Exposure (eliminates AE hunting)
     // Wyłączamy auto i ustawiamy stałą wartość
+
     ctrl.id = V4L2_CID_EXPOSURE_AUTO;
     ctrl.value = V4L2_EXPOSURE_MANUAL;
     if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) == 0) {
@@ -318,9 +320,9 @@ static void setup_camera_controls(void)
         // 200 = 20ms (dla 50Hz: pełny cykl sieci)
         // Możesz dostosować: mniejsza wartość = ciemniej ale ostrzej
         ctrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
-        ctrl.value = 200;  // 20ms
+        ctrl.value = 400;  // 40ms
         if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) == 0) {
-            ESP_LOGI(TAG, "Exposure set to %d (20ms)", ctrl.value);
+            ESP_LOGI(TAG, "Exposure set to %d (40ms)", ctrl.value);
         }
         
         // Ustaw gain (wzmocnienie) dla kompensacji jasności
@@ -334,6 +336,7 @@ static void setup_camera_controls(void)
         ESP_LOGW(TAG, "Failed to switch to Manual Exposure - AE hunting may occur");
     }
 
+
     // Stare przykłady (zakomentowane)
     // ctrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
     // ctrl.value = 100;
@@ -343,6 +346,41 @@ static void setup_camera_controls(void)
     // ctrl.id = V4L2_CID_GAIN;
     // ctrl.value = 0;
     // ioctl(fd, VIDIOC_S_CTRL, &ctrl);
+
+    // 5. ISP Noise Reduction (Bayer Filter)
+    struct v4l2_ext_controls ctrls = {0};
+    struct v4l2_ext_control ctrl_ext[1] = {0};
+    esp_video_isp_bf_t bf_cfg = {0};
+
+    ctrls.ctrl_class = V4L2_CID_USER_CLASS;
+    ctrls.count = 1;
+    ctrls.controls = ctrl_ext;
+    ctrl_ext[0].id = V4L2_CID_USER_ESP_ISP_BF;
+    ctrl_ext[0].size = sizeof(esp_video_isp_bf_t);
+    ctrl_ext[0].p_u8 = (uint8_t *)&bf_cfg;
+
+    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &ctrls) == 0) {
+        ESP_LOGI(TAG, "Current BF: enable=%d, level=%d", bf_cfg.enable, bf_cfg.level);
+        
+        bf_cfg.enable = true;
+        bf_cfg.level = 10; // Range [2, 20]
+        
+        // Set default matrix (simple averaging)
+        uint8_t default_matrix[3][3] = {
+            {1, 2, 1},
+            {2, 4, 2},
+            {1, 2, 1}
+        };
+        memcpy(bf_cfg.matrix, default_matrix, sizeof(default_matrix));
+
+        if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &ctrls) == 0) {
+            ESP_LOGI(TAG, "Enabled ISP Denoising (Level 10)");
+        } else {
+            ESP_LOGW(TAG, "Failed to set ISP BF");
+        }
+    } else {
+        ESP_LOGW(TAG, "Failed to read ISP BF");
+    }
 
     close(fd);
 }

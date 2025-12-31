@@ -7,10 +7,8 @@ dependencies:
   espressif/esp_h264:
     version: "1.0.4"
     rules:
-    - if: target in [esp32p4, esp32s3]
+    - if: target in [esp32p4]
   espressif/esp_capture:
     version: "~0.7"
-  espressif/esp_wifi_remote:
-    version: "*"
   espressif/esp-dl:
-    version: "^3.2.2"
+    version: "^3.0"
