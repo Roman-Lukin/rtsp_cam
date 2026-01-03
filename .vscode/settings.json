@@ -1,24 +1,15 @@
 {
-  "idf.espIdfPathWin": "c:\\Work_API\\v5.5\\esp-idf",
-  "idf.toolsPathWin": "c:\\Work_API\\ESP_IDF_TOOLS",
-  "idf.pythonInstallPath": "/usr/bin/python3",
+  "idf.pythonBinPath": "/Users/workbook/.espressif/python_env/idf5.5_py3.9_env/bin/python",
   "idf.openOcdConfigs": [
     "board/esp32p4-ftdi.cfg"
   ],
   "idf.customExtraVars": {
-    "OPENOCD_SCRIPTS": "c:\\Work_API\\ESP_IDF_TOOLS\\tools\\openocd-esp32\\v0.11.0-esp32-20221026/openocd-esp32/share/openocd/scripts",
     "IDF_CCACHE_ENABLE": "1",
     "IDF_TARGET": "esp32p4"
   },
-  "clangd.path": "c:\\Work_API\\ESP_IDF_TOOLS\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
-  "clangd.arguments": [
-    "--background-index",
-    "--query-driver=**",
-    "--compile-commands-dir=c:\\MyProgs\\ESP32\\rtsp_cam\\build"
-  ],
-  "idf.portWin": "COM1",
   "idf.port": "/dev/tty.usbserial-0001",
   "idf.flashType": "UART",
   "idf.espIdfPath": "/Users/workbook/esp/v5.5.1/esp-idf",
-  "idf.toolsPath": "/Users/workbook/.espressif"
+  "idf.toolsPath": "/Users/workbook/.espressif",
+  "idf.currentSetup": "/Users/workbook/esp/v5.5.1/esp-idf"
 }

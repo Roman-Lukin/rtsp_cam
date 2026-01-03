@@ -12,6 +12,15 @@
 void ov5647_helper_init(i2c_master_bus_handle_t bus_handle);
 
 /**
+ * @brief Read a value from an OV5647 register via I2C (SCCB).
+ * 
+ * @param reg The register address (16-bit).
+ * @param value Pointer to store the read value (8-bit).
+ * @return esp_err_t ESP_OK on success, or an error code.
+ */
+esp_err_t ov5647_read_reg(uint16_t reg, uint8_t *value);
+
+/**
  * @brief Write a value to an OV5647 register via I2C (SCCB).
  * 
  * @param reg The register address (16-bit).
@@ -43,6 +52,32 @@ void ov5647_set_gain(uint16_t gain);
  * @param blue_gain  Blue channel gain.
  */
 void ov5647_set_awb(uint16_t red_gain, uint16_t green_gain, uint16_t blue_gain);
+
+/**
+ * @brief Set OV5647 test pattern (register 0x503D).
+ * 
+ * @param pattern Pattern mode:
+ *                0x00: Disabled
+ *                0x80: Color Bars
+ *                0x81: Random Data
+ *                0x82: Color Squares
+ */
+void ov5647_set_test_pattern(uint8_t pattern);
+
+/**
+ * @brief Set OV5647 Vertical Total Size (VTS) (registers 0x380E-0x380F).
+ *        VTS controls the frame rate. FPS = PCLK / (HTS * VTS).
+ * 
+ * @param vts Vertical Total Size (lines).
+ */
+void ov5647_set_vts(uint16_t vts);
+
+/**
+ * @brief Get OV5647 Vertical Total Size (VTS) (registers 0x380E-0x380F).
+ * 
+ * @return uint16_t Current VTS value.
+ */
+uint16_t ov5647_get_vts(void);
 
 /**
  * @brief Configure OV5647 camera controls directly via I2C.

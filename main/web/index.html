@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RTSP Camera Settings</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh; padding: 20px; color: #eee; 
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        h1 { 
+            text-align: center; margin-bottom: 30px; color: #00d4ff;
+            text-shadow: 0 0 10px rgba(0,212,255,0.5); 
+        }
+        .card { 
+            background: rgba(255,255,255,0.1); border-radius: 15px;
+            padding: 20px; margin-bottom: 20px; backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1); 
+        }
+        .card h2 { 
+            color: #00d4ff; margin-bottom: 15px; font-size: 1.2em;
+            border-bottom: 1px solid rgba(0,212,255,0.3); padding-bottom: 10px; 
+        }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9em; }
+        input[type='range'] { 
+            width: 100%; height: 8px; border-radius: 4px;
+            background: #333; outline: none; -webkit-appearance: none; 
+        }
+        input[type='range']::-webkit-slider-thumb { 
+            -webkit-appearance: none;
+            width: 20px; height: 20px; border-radius: 50%; background: #00d4ff;
+            cursor: pointer; box-shadow: 0 0 10px rgba(0,212,255,0.5); 
+        }
+        input[type='checkbox'] { width: 20px; height: 20px; cursor: pointer; }
+        select { 
+            width: 100%; padding: 10px; border-radius: 8px; border: none;
+            background: #333; color: #eee; font-size: 1em; 
+        }
+        .value-display { float: right; color: #00d4ff; font-weight: bold; }
+        .btn { 
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            color: #000; border: none; padding: 12px 30px; border-radius: 8px;
+            font-size: 1em; cursor: pointer; font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s; 
+        }
+        .btn:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0,212,255,0.4); 
+        }
+        .btn:active { transform: translateY(0); }
+        .btn-container { text-align: center; margin-top: 20px; }
+        .status { 
+            text-align: center; padding: 10px; border-radius: 8px;
+            margin-top: 10px; display: none; 
+        }
+        .status.success { display: block; background: rgba(0,255,0,0.2); color: #0f0; }
+        .status.error { display: block; background: rgba(255,0,0,0.2); color: #f00; }
+        .row { display: flex; gap: 15px; }
+        .row .form-group { flex: 1; }
+        .info { 
+            background: rgba(0,212,255,0.1); padding: 15px; border-radius: 8px;
+            margin-bottom: 20px; text-align: center; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📷 RTSP Camera Settings</h1>
+        
+        <div class="info">
+            <strong>Stream:</strong> rtsp://&lt;IP&gt;:554/stream | 
+            <strong>Resolution:</strong> <span id="resolution">--</span>
+        </div>
+        
+        <form id="settingsForm">
+            <div class="card">
+                <h2>🔆 Exposure</h2>
+                <div class="form-group">
+                    <label><input type="checkbox" id="autoExposure" onchange="toggleExposure()"> Auto Exposure</label>
+                </div>
+                <div id="manualExposure">
+                    <div class="form-group">
+                        <label>Exposure Time <span class="value-display" id="expVal">200</span></label>
+                        <input type="range" id="exposure" min="1" max="1000" value="200" oninput="updateVal('expVal', this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label>Gain <span class="value-display" id="gainVal">16</span></label>
+                        <input type="range" id="gain" min="0" max="255" value="16" oninput="updateVal('gainVal', this.value)">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>🎨 White Balance</h2>
+                <div class="form-group">
+                    <label><input type="checkbox" id="autoWB" checked> Auto White Balance</label>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>🔇 Noise Reduction (ISP)</h2>
+                <div class="form-group">
+                    <label><input type="checkbox" id="denoiseEnable" checked onchange="toggleDenoise()"> Enable Denoising</label>
+                </div>
+                <div class="form-group" id="denoiseGroup">
+                    <label>Denoise Level <span class="value-display" id="denoiseVal">10</span></label>
+                    <input type="range" id="denoiseLevel" min="2" max="20" value="10" oninput="updateVal('denoiseVal', this.value)">
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>💡 Anti-Flicker</h2>
+                <div class="form-group">
+                    <label>Power Line Frequency</label>
+                    <select id="powerLineFreq">
+                        <option value="0">Disabled</option>
+                        <option value="1" selected>50 Hz (Europe)</option>
+                        <option value="2">60 Hz (USA)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>🎬 H.264 Encoder</h2>
+                <div class="form-group">
+                    <label>Bitrate (kbps) <span class="value-display" id="bitrateVal">6000</span></label>
+                    <input type="range" id="bitrate" min="1000" max="15000" step="500" value="6000" oninput="updateVal('bitrateVal', this.value)">
+                </div>
+                <div class="form-group">
+                    <label>GOP Size <span class="value-display" id="gopVal">25</span></label>
+                    <input type="range" id="gop" min="1" max="120" value="25" oninput="updateVal('gopVal', this.value)">
+                </div>
+                <div class="row">
+                    <div class="form-group">
+                        <label>Min QP <span class="value-display" id="minQpVal">20</span></label>
+                        <input type="range" id="minQp" min="0" max="51" value="20" oninput="updateVal('minQpVal', this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label>Max QP <span class="value-display" id="maxQpVal">35</span></label>
+                        <input type="range" id="maxQp" min="0" max="51" value="35" oninput="updateVal('maxQpVal', this.value)">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="btn-container">
+                <button type="submit" class="btn">💾 Save Settings</button>
+            </div>
+            <div id="status" class="status"></div>
+        </form>
+    </div>
+    
+    <script>
+        function updateVal(id, val) { 
+            document.getElementById(id).textContent = val; 
+        }
+        
+        function toggleExposure() {
+            document.getElementById('manualExposure').style.display = 
+                document.getElementById('autoExposure').checked ? 'none' : 'block';
+        }
+        
+        function toggleDenoise() {
+            document.getElementById('denoiseGroup').style.display = 
+                document.getElementById('denoiseEnable').checked ? 'block' : 'none';
+        }
+        
+        // Load current settings
+        fetch('/api/settings').then(r => r.json()).then(data => {
+            document.getElementById('resolution').textContent = 
+                data.width + 'x' + data.height + ' @ ' + data.fps + 'fps';
+            document.getElementById('autoExposure').checked = data.auto_exposure;
+            document.getElementById('exposure').value = data.exposure_value;
+            document.getElementById('gain').value = data.gain;
+            document.getElementById('autoWB').checked = data.auto_white_balance;
+            document.getElementById('denoiseEnable').checked = data.denoise_enable;
+            document.getElementById('denoiseLevel').value = data.denoise_level;
+            document.getElementById('powerLineFreq').value = data.power_line_freq;
+            document.getElementById('bitrate').value = data.bitrate;
+            document.getElementById('gop').value = data.gop;
+            document.getElementById('minQp').value = data.min_qp;
+            document.getElementById('maxQp').value = data.max_qp;
+            
+            updateVal('expVal', data.exposure_value);
+            updateVal('gainVal', data.gain);
+            updateVal('denoiseVal', data.denoise_level);
+            updateVal('bitrateVal', data.bitrate);
+            updateVal('gopVal', data.gop);
+            updateVal('minQpVal', data.min_qp);
+            updateVal('maxQpVal', data.max_qp);
+            
+            toggleExposure();
+            toggleDenoise();
+        });
+        
+        document.getElementById('settingsForm').onsubmit = function(e) {
+            e.preventDefault();
+            const data = {
+                auto_exposure: document.getElementById('autoExposure').checked,
+                exposure_value: parseInt(document.getElementById('exposure').value),
+                gain: parseInt(document.getElementById('gain').value),
+                auto_white_balance: document.getElementById('autoWB').checked,
+                denoise_enable: document.getElementById('denoiseEnable').checked,
+                denoise_level: parseInt(document.getElementById('denoiseLevel').value),
+                power_line_freq: parseInt(document.getElementById('powerLineFreq').value),
+                bitrate: parseInt(document.getElementById('bitrate').value),
+                gop: parseInt(document.getElementById('gop').value),
+                min_qp: parseInt(document.getElementById('minQp').value),
+                max_qp: parseInt(document.getElementById('maxQp').value)
+            };
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            }).then(r => r.json()).then(resp => {
+                const status = document.getElementById('status');
+                if (resp.success) {
+                    status.className = 'status success';
+                    status.textContent = '✓ Settings saved!';
+                } else {
+                    status.className = 'status error';
+                    status.textContent = '✗ Error: ' + resp.error;
+                }
+                setTimeout(() => status.className = 'status', 3000);
+            });
+        };
+    </script>
+</body>
+</html>

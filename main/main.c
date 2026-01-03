@@ -157,55 +157,56 @@ static void capture_task(void *pvParameters)
     
     ESP_LOGI(TAG, "Capture task started");
 
-    // --- Motion Vector Setup (DISABLED - causes flickering) ---
-    // esp_h264_enc_param_hw_handle_t h264_hw_handle = NULL;
-    // esp_gmf_element_handle_t venc_hd = NULL;
-    // esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
-    // 
-    // if (venc_hd) {
-    //     venc_t *venc = (venc_t *)venc_hd;
-    //     if (venc->enc_handle) {
-    //         video_enc_impl_t *venc_impl = (video_enc_impl_t *)venc->enc_handle;
-    //         h264_hw_handle = (esp_h264_enc_param_hw_handle_t)venc_impl->enc_handle;
-    //         
-    //         if (h264_hw_handle) {
-    //             ESP_LOGI(TAG, "Found H.264 HW handle: %p", h264_hw_handle);
-    //             
-    //             esp_h264_enc_mv_cfg_t mv_cfg = {
-    //                 .mv_mode = ESP_H264_MVM_MODE_P16X16,
-    //                 .mv_fmt  = ESP_H264_MVM_FMT_ALL,
-    //             };
-    //             esp_h264_err_t ret = esp_h264_enc_hw_cfg_mv(h264_hw_handle, mv_cfg);
-    //             if (ret == ESP_H264_ERR_OK) {
-    //                 ESP_LOGI(TAG, "Motion Vectors Enabled!");
-    //             } else {
-    //                 ESP_LOGE(TAG, "Failed to enable Motion Vectors: %d", ret);
-    //                 h264_hw_handle = NULL;
-    //             }
-    //         }
-    //     }
-    // }
-    //
-    // size_t mv_buf_size = (VIDEO_WIDTH / 16) * (VIDEO_HEIGHT / 16) * sizeof(esp_h264_enc_mv_data_t);
-    // uint8_t *mv_buf = heap_caps_malloc(mv_buf_size, MALLOC_CAP_SPIRAM);
-    // if (!mv_buf) {
-    //     ESP_LOGE(TAG, "Failed to allocate MV buffer");
-    // }
+    // --- Motion Vector Setup ---
+    esp_h264_enc_param_hw_handle_t h264_hw_handle = NULL;
+    esp_gmf_element_handle_t venc_hd = NULL;
+    esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
+    
+    if (venc_hd) {
+        venc_t *venc = (venc_t *)venc_hd;
+        if (venc->enc_handle) {
+            video_enc_impl_t *venc_impl = (video_enc_impl_t *)venc->enc_handle;
+            h264_hw_handle = (esp_h264_enc_param_hw_handle_t)venc_impl->enc_handle;
+            
+            if (h264_hw_handle) {
+                ESP_LOGI(TAG, "Found H.264 HW handle: %p", h264_hw_handle);
+                
+                esp_h264_enc_mv_cfg_t mv_cfg = {
+                    .mv_mode = ESP_H264_MVM_MODE_P16X16,
+                    .mv_fmt  = ESP_H264_MVM_FMT_ALL,
+                };
+                esp_h264_err_t ret = esp_h264_enc_hw_cfg_mv(h264_hw_handle, mv_cfg);
+                if (ret == ESP_H264_ERR_OK) {
+                    ESP_LOGI(TAG, "Motion Vectors Enabled!");
+                } else {
+                    ESP_LOGE(TAG, "Failed to enable Motion Vectors: %d", ret);
+                    h264_hw_handle = NULL;
+                }
+            }
+        }
+    }
+    
+    size_t mv_buf_size = (VIDEO_WIDTH / 16) * (VIDEO_HEIGHT / 16) * sizeof(esp_h264_enc_mv_data_t);
+    uint8_t *mv_buf = heap_caps_malloc(mv_buf_size, MALLOC_CAP_SPIRAM);
+    if (!mv_buf) {
+        ESP_LOGE(TAG, "Failed to allocate MV buffer");
+    }
     // ---------------------------
 
     uint32_t frame_count = 0;
     uint32_t last_log_time = 0;
     uint32_t start_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    bool last_motion_state = false;
     
     while (capture_running) {
-        // --- Set MV Packet for NEXT frame (DISABLED) ---
-        // if (h264_hw_handle && mv_buf) {
-        //     esp_h264_enc_mvm_pkt_t mv_pkt = {
-        //         .data = (esp_h264_enc_mv_data_t *)mv_buf,
-        //         .len = mv_buf_size,
-        //     };
-        //     esp_h264_enc_hw_set_mv_pkt(h264_hw_handle, mv_pkt);
-        // }
+        // --- Set MV Packet for NEXT frame ---
+        if (h264_hw_handle && mv_buf) {
+            esp_h264_enc_mvm_pkt_t mv_pkt = {
+                .data = (esp_h264_enc_mv_data_t *)mv_buf,
+                .len = mv_buf_size,
+            };
+            esp_h264_enc_hw_set_mv_pkt(h264_hw_handle, mv_pkt);
+        }
         // ------------------------------------
 
         // Acquire frame (blocking with timeout)
@@ -219,29 +220,35 @@ static void capture_task(void *pvParameters)
                 uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
                 uint32_t timestamp_ms = now - start_time;
 
-                // --- Process MV Data (DISABLED) ---
-                // if (h264_hw_handle && mv_buf) {
-                //     uint32_t mv_len = 0;
-                //     esp_h264_enc_hw_get_mv_data_len(h264_hw_handle, &mv_len);
-                //     if (mv_len > 0) {
-                //         // Check for motion
-                //         int motion_count = 0;
-                //         esp_h264_enc_mv_data_t *mvs = (esp_h264_enc_mv_data_t *)mv_buf;
-                //         int mb_count = mv_len / sizeof(esp_h264_enc_mv_data_t);
-                //         
-                //         for (int i = 0; i < mb_count; i++) {
-                //             // Simple threshold: if MV is large enough
-                //             if (abs(mvs[i].mv_x) > 4 || abs(mvs[i].mv_y) > 4) {
-                //                 motion_count++;
-                //             }
-                //         }
-                //         
-                //         if (motion_count > 50) { // Threshold
-                //              ESP_LOGI(TAG, "Motion Detected! MBs: %d", motion_count);
-                //             // TODO: Trigger LPR
-                //         }
-                //     }
-                // }
+                // --- Process MV Data ---
+                if (h264_hw_handle && mv_buf) {
+                    uint32_t mv_len = 0;
+                    esp_h264_enc_hw_get_mv_data_len(h264_hw_handle, &mv_len);
+                    if (mv_len > 0) {
+                        // Check for motion
+                        int motion_count = 0;
+                        esp_h264_enc_mv_data_t *mvs = (esp_h264_enc_mv_data_t *)mv_buf;
+                        int mb_count = mv_len / sizeof(esp_h264_enc_mv_data_t);
+                        
+                        for (int i = 0; i < mb_count; i++) {
+                            // Simple threshold: if MV is large enough
+                            if (abs(mvs[i].mv_x) > 4 || abs(mvs[i].mv_y) > 4) {
+                                motion_count++;
+                            }
+                        }
+                        
+                        bool current_motion_state = (motion_count > 50);
+                        if (current_motion_state != last_motion_state) {
+                            if (current_motion_state) {
+                                ESP_LOGI(TAG, "Motion Detected! MBs: %d", motion_count);
+                                // TODO: Trigger LPR
+                            } else {
+                                ESP_LOGI(TAG, "Motion Stopped");
+                            }
+                            last_motion_state = current_motion_state;
+                        }
+                    }
+                }
                 // -----------------------
                 
                 // Log frame info every 5 seconds or first 10 frames
