@@ -38,6 +38,8 @@
 #include "esp_video_isp_ioctl.h"
 
 #include "rtsp_server.h"
+#include "http_server.h"
+#include "ov5647_helper.h"
 
 // --- HACK: Private structs from esp_gmf_video_enc.c and esp_video_enc.c ---
 // Needed to access H.264 HW handle for Motion Vectors
@@ -71,7 +73,17 @@ typedef struct {
     const void *ops;
     void *enc_handle;
 } video_enc_impl_t;
-// --------------------------------------------------------------------------
+// --- HACK: Private struct from capture_video_v4l2_src.c ---
+// Needed to access FD for V4L2 controls
+#define MAX_SUPPORT_FORMATS_NUM (4)
+typedef struct {
+    esp_capture_video_src_if_t  base;
+    char                        dev_name[16];
+    uint8_t                     buf_count;
+    esp_capture_format_id_t     support_formats[MAX_SUPPORT_FORMATS_NUM];
+    uint8_t                     format_count;
+    int                         fd;
+} v4l2_src_hack_t;// --------------------------------------------------------------------------
 
 static const char *TAG = "RTSP_CAM";
 
@@ -87,6 +99,10 @@ static rtsp_server_handle_t rtsp_server = NULL;
 // Frame capture task
 static TaskHandle_t capture_task_handle = NULL;
 static volatile bool capture_running = false;
+
+// Forward declaration for encoder settings callback
+static void on_settings_change(const camera_settings_t *settings);
+int get_camera_fd(void);
 
 /**
  * @brief Create video source for MIPI camera on ESP32-P4
@@ -141,40 +157,40 @@ static void capture_task(void *pvParameters)
     
     ESP_LOGI(TAG, "Capture task started");
 
-    // --- Motion Vector Setup ---
-    esp_h264_enc_param_hw_handle_t h264_hw_handle = NULL;
-    esp_gmf_element_handle_t venc_hd = NULL;
-    esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
-    
-    if (venc_hd) {
-        venc_t *venc = (venc_t *)venc_hd;
-        if (venc->enc_handle) {
-            video_enc_impl_t *venc_impl = (video_enc_impl_t *)venc->enc_handle;
-            h264_hw_handle = (esp_h264_enc_param_hw_handle_t)venc_impl->enc_handle;
-            
-            if (h264_hw_handle) {
-                ESP_LOGI(TAG, "Found H.264 HW handle: %p", h264_hw_handle);
-                
-                esp_h264_enc_mv_cfg_t mv_cfg = {
-                    .mv_mode = ESP_H264_MVM_MODE_P16X16,
-                    .mv_fmt  = ESP_H264_MVM_FMT_ALL,
-                };
-                esp_h264_err_t ret = esp_h264_enc_hw_cfg_mv(h264_hw_handle, mv_cfg);
-                if (ret == ESP_H264_ERR_OK) {
-                    ESP_LOGI(TAG, "Motion Vectors Enabled!");
-                } else {
-                    ESP_LOGE(TAG, "Failed to enable Motion Vectors: %d", ret);
-                    h264_hw_handle = NULL;
-                }
-            }
-        }
-    }
-
-    size_t mv_buf_size = (VIDEO_WIDTH / 16) * (VIDEO_HEIGHT / 16) * sizeof(esp_h264_enc_mv_data_t);
-    uint8_t *mv_buf = heap_caps_malloc(mv_buf_size, MALLOC_CAP_SPIRAM);
-    if (!mv_buf) {
-        ESP_LOGE(TAG, "Failed to allocate MV buffer");
-    }
+    // --- Motion Vector Setup (DISABLED - causes flickering) ---
+    // esp_h264_enc_param_hw_handle_t h264_hw_handle = NULL;
+    // esp_gmf_element_handle_t venc_hd = NULL;
+    // esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
+    // 
+    // if (venc_hd) {
+    //     venc_t *venc = (venc_t *)venc_hd;
+    //     if (venc->enc_handle) {
+    //         video_enc_impl_t *venc_impl = (video_enc_impl_t *)venc->enc_handle;
+    //         h264_hw_handle = (esp_h264_enc_param_hw_handle_t)venc_impl->enc_handle;
+    //         
+    //         if (h264_hw_handle) {
+    //             ESP_LOGI(TAG, "Found H.264 HW handle: %p", h264_hw_handle);
+    //             
+    //             esp_h264_enc_mv_cfg_t mv_cfg = {
+    //                 .mv_mode = ESP_H264_MVM_MODE_P16X16,
+    //                 .mv_fmt  = ESP_H264_MVM_FMT_ALL,
+    //             };
+    //             esp_h264_err_t ret = esp_h264_enc_hw_cfg_mv(h264_hw_handle, mv_cfg);
+    //             if (ret == ESP_H264_ERR_OK) {
+    //                 ESP_LOGI(TAG, "Motion Vectors Enabled!");
+    //             } else {
+    //                 ESP_LOGE(TAG, "Failed to enable Motion Vectors: %d", ret);
+    //                 h264_hw_handle = NULL;
+    //             }
+    //         }
+    //     }
+    // }
+    //
+    // size_t mv_buf_size = (VIDEO_WIDTH / 16) * (VIDEO_HEIGHT / 16) * sizeof(esp_h264_enc_mv_data_t);
+    // uint8_t *mv_buf = heap_caps_malloc(mv_buf_size, MALLOC_CAP_SPIRAM);
+    // if (!mv_buf) {
+    //     ESP_LOGE(TAG, "Failed to allocate MV buffer");
+    // }
     // ---------------------------
 
     uint32_t frame_count = 0;
@@ -182,14 +198,14 @@ static void capture_task(void *pvParameters)
     uint32_t start_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
     
     while (capture_running) {
-        // --- Set MV Packet for NEXT frame ---
-        if (h264_hw_handle && mv_buf) {
-            esp_h264_enc_mvm_pkt_t mv_pkt = {
-                .data = (esp_h264_enc_mv_data_t *)mv_buf,
-                .len = mv_buf_size,
-            };
-            esp_h264_enc_hw_set_mv_pkt(h264_hw_handle, mv_pkt);
-        }
+        // --- Set MV Packet for NEXT frame (DISABLED) ---
+        // if (h264_hw_handle && mv_buf) {
+        //     esp_h264_enc_mvm_pkt_t mv_pkt = {
+        //         .data = (esp_h264_enc_mv_data_t *)mv_buf,
+        //         .len = mv_buf_size,
+        //     };
+        //     esp_h264_enc_hw_set_mv_pkt(h264_hw_handle, mv_pkt);
+        // }
         // ------------------------------------
 
         // Acquire frame (blocking with timeout)
@@ -203,29 +219,29 @@ static void capture_task(void *pvParameters)
                 uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
                 uint32_t timestamp_ms = now - start_time;
 
-                // --- Process MV Data ---
-                if (h264_hw_handle && mv_buf) {
-                    uint32_t mv_len = 0;
-                    esp_h264_enc_hw_get_mv_data_len(h264_hw_handle, &mv_len);
-                    if (mv_len > 0) {
-                        // Check for motion
-                        int motion_count = 0;
-                        esp_h264_enc_mv_data_t *mvs = (esp_h264_enc_mv_data_t *)mv_buf;
-                        int mb_count = mv_len / sizeof(esp_h264_enc_mv_data_t);
-                        
-                        for (int i = 0; i < mb_count; i++) {
-                            // Simple threshold: if MV is large enough
-                            if (abs(mvs[i].mv_x) > 4 || abs(mvs[i].mv_y) > 4) {
-                                motion_count++;
-                            }
-                        }
-                        
-                        if (motion_count > 50) { // Threshold
-                             ESP_LOGI(TAG, "Motion Detected! MBs: %d", motion_count);
-                            // TODO: Trigger LPR
-                        }
-                    }
-                }
+                // --- Process MV Data (DISABLED) ---
+                // if (h264_hw_handle && mv_buf) {
+                //     uint32_t mv_len = 0;
+                //     esp_h264_enc_hw_get_mv_data_len(h264_hw_handle, &mv_len);
+                //     if (mv_len > 0) {
+                //         // Check for motion
+                //         int motion_count = 0;
+                //         esp_h264_enc_mv_data_t *mvs = (esp_h264_enc_mv_data_t *)mv_buf;
+                //         int mb_count = mv_len / sizeof(esp_h264_enc_mv_data_t);
+                //         
+                //         for (int i = 0; i < mb_count; i++) {
+                //             // Simple threshold: if MV is large enough
+                //             if (abs(mvs[i].mv_x) > 4 || abs(mvs[i].mv_y) > 4) {
+                //                 motion_count++;
+                //             }
+                //         }
+                //         
+                //         if (motion_count > 50) { // Threshold
+                //              ESP_LOGI(TAG, "Motion Detected! MBs: %d", motion_count);
+                //             // TODO: Trigger LPR
+                //         }
+                //     }
+                // }
                 // -----------------------
                 
                 // Log frame info every 5 seconds or first 10 frames
@@ -264,125 +280,15 @@ static void capture_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-/**
- * @brief Configure camera settings (White Balance, Exposure, etc.)
- */
-static void setup_camera_controls(void)
+
+
+int get_camera_fd(void)
 {
-    ESP_LOGI(TAG, "Configuring camera settings...");
-    int fd = open("/dev/video0", O_RDWR);
-    if (fd < 0) {
-        ESP_LOGE(TAG, "Failed to open video device for controls");
-        return;
+    if (video_src) {
+        v4l2_src_hack_t *src = (v4l2_src_hack_t *)video_src;
+        return src->fd;
     }
-
-    struct v4l2_control ctrl;
-
-    // 1. Auto White Balance
-    // 1 = Auto, 0 = Manual
-    ctrl.id = V4L2_CID_AUTO_WHITE_BALANCE;
-    ctrl.value = 1; 
-    if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) < 0) {
-        ESP_LOGW(TAG, "Failed to set Auto White Balance");
-    } else {
-        ESP_LOGI(TAG, "Auto White Balance: %s", ctrl.value ? "Enabled" : "Disabled");
-    }
-
-    // 2. Auto Exposure
-    // V4L2_EXPOSURE_AUTO = 0, V4L2_EXPOSURE_MANUAL = 1
-    ctrl.id = V4L2_CID_EXPOSURE_AUTO;
-    ctrl.value = V4L2_EXPOSURE_AUTO;
-    if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) < 0) {
-        ESP_LOGW(TAG, "Failed to set Auto Exposure");
-    } else {
-        ESP_LOGI(TAG, "Auto Exposure: %s", ctrl.value == V4L2_EXPOSURE_AUTO ? "Auto" : "Manual");
-    }
-
-    // 3. Anti-flicker (Power Line Frequency)
-    // 1 = 50Hz (Europe), 2 = 60Hz (USA)
-    ctrl.id = V4L2_CID_POWER_LINE_FREQUENCY;
-    ctrl.value = 1;  // 50Hz dla Polski/Europy
-    if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) < 0) {
-        ESP_LOGW(TAG, "Failed to set Power Line Frequency (anti-flicker)");
-    } else {
-        ESP_LOGI(TAG, "Anti-flicker: 50Hz");
-    }
-
-    // 4. Manual Exposure (eliminates AE hunting)
-    // Wyłączamy auto i ustawiamy stałą wartość
-
-    ctrl.id = V4L2_CID_EXPOSURE_AUTO;
-    ctrl.value = V4L2_EXPOSURE_MANUAL;
-    if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) == 0) {
-        ESP_LOGI(TAG, "Switched to Manual Exposure");
-        
-        // Ustaw czas ekspozycji (w jednostkach 100µs)
-        // 200 = 20ms (dla 50Hz: pełny cykl sieci)
-        // Możesz dostosować: mniejsza wartość = ciemniej ale ostrzej
-        ctrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
-        ctrl.value = 400;  // 40ms
-        if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) == 0) {
-            ESP_LOGI(TAG, "Exposure set to %d (40ms)", ctrl.value);
-        }
-        
-        // Ustaw gain (wzmocnienie) dla kompensacji jasności
-        // Wyższa wartość = jaśniej ale więcej szumu
-        ctrl.id = V4L2_CID_GAIN;
-        ctrl.value = 16;  // Umiarkowane wzmocnienie
-        if (ioctl(fd, VIDIOC_S_CTRL, &ctrl) == 0) {
-            ESP_LOGI(TAG, "Gain set to %d", ctrl.value);
-        }
-    } else {
-        ESP_LOGW(TAG, "Failed to switch to Manual Exposure - AE hunting may occur");
-    }
-
-
-    // Stare przykłady (zakomentowane)
-    // ctrl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
-    // ctrl.value = 100;
-    // ioctl(fd, VIDIOC_S_CTRL, &ctrl);
-
-    // Example: Gain
-    // ctrl.id = V4L2_CID_GAIN;
-    // ctrl.value = 0;
-    // ioctl(fd, VIDIOC_S_CTRL, &ctrl);
-
-    // 5. ISP Noise Reduction (Bayer Filter)
-    struct v4l2_ext_controls ctrls = {0};
-    struct v4l2_ext_control ctrl_ext[1] = {0};
-    esp_video_isp_bf_t bf_cfg = {0};
-
-    ctrls.ctrl_class = V4L2_CID_USER_CLASS;
-    ctrls.count = 1;
-    ctrls.controls = ctrl_ext;
-    ctrl_ext[0].id = V4L2_CID_USER_ESP_ISP_BF;
-    ctrl_ext[0].size = sizeof(esp_video_isp_bf_t);
-    ctrl_ext[0].p_u8 = (uint8_t *)&bf_cfg;
-
-    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &ctrls) == 0) {
-        ESP_LOGI(TAG, "Current BF: enable=%d, level=%d", bf_cfg.enable, bf_cfg.level);
-        
-        bf_cfg.enable = true;
-        bf_cfg.level = 10; // Range [2, 20]
-        
-        // Set default matrix (simple averaging)
-        uint8_t default_matrix[3][3] = {
-            {1, 2, 1},
-            {2, 4, 2},
-            {1, 2, 1}
-        };
-        memcpy(bf_cfg.matrix, default_matrix, sizeof(default_matrix));
-
-        if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &ctrls) == 0) {
-            ESP_LOGI(TAG, "Enabled ISP Denoising (Level 10)");
-        } else {
-            ESP_LOGW(TAG, "Failed to set ISP BF");
-        }
-    } else {
-        ESP_LOGW(TAG, "Failed to read ISP BF");
-    }
-
-    close(fd);
+    return -1;
 }
 
 void app_main(void)
@@ -421,6 +327,9 @@ void app_main(void)
             return;
         }
         ESP_LOGI(TAG, "I2C initialized (SDA:%d, SCL:%d)", i2c_pin.sda, i2c_pin.scl);
+        
+        // Initialize OV5647 helper
+        ov5647_helper_init(i2c_bus_handle);
     } else {
         ESP_LOGE(TAG, "Invalid I2C pin configuration");
         return;
@@ -438,7 +347,8 @@ void app_main(void)
         return;
     }
 
-    // Configure camera settings (AWB, AE, etc.)
+    // Wstępne ustawienia kamery przed uruchomieniem pipeline
+    vTaskDelay(pdMS_TO_TICKS(50));
     setup_camera_controls();
 
     // Create capture system (video only, no audio for RTSP streaming)
@@ -502,6 +412,14 @@ void app_main(void)
         return;
     }
 
+    // Start HTTP Server for settings page
+    ESP_LOGI(TAG, "Starting HTTP Server for settings...");
+    http_server_set_settings_callback(on_settings_change);
+    ret = http_server_start();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to start HTTP server (non-critical)");
+    }
+
     // Enable sink and start capture
     esp_capture_sink_enable(capture_sink, ESP_CAPTURE_RUN_MODE_ALWAYS);
     cap_ret = esp_capture_start(capture_handle);
@@ -509,6 +427,10 @@ void app_main(void)
         ESP_LOGE(TAG, "Failed to start capture: %d", cap_ret);
         return;
     }
+
+    // Ponowna próba ustawień po starcie pipeline (niektóre sterowniki akceptują dopiero po STREAMON)
+    vTaskDelay(pdMS_TO_TICKS(100));
+    setup_camera_controls();
 
     // Start capture task
     capture_running = true;
@@ -519,6 +441,7 @@ void app_main(void)
     ESP_LOGI(TAG, "RTSP Camera Ready!");
     ESP_LOGI(TAG, "Video: %dx%d @ %dfps H.264", VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS);
     ESP_LOGI(TAG, "Stream URL: rtsp://<IP>:554/stream");
+    ESP_LOGI(TAG, "Settings:   http://<IP>/");
     ESP_LOGI(TAG, "=================================");
 
     // Main monitoring loop
@@ -542,5 +465,32 @@ void app_main(void)
         }
 
         vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+/**
+ * @brief Callback for HTTP server when encoder settings change
+ */
+static void on_settings_change(const camera_settings_t *settings)
+{
+    ESP_LOGI(TAG, "Applying encoder settings: bitrate=%d kbps, GOP=%d, QP=%d-%d",
+             settings->bitrate, settings->gop, settings->min_qp, settings->max_qp);
+    
+    esp_gmf_element_handle_t venc_hd = NULL;
+    esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
+    
+    if (venc_hd) {
+        // Update bitrate (convert kbps to bps)
+        esp_capture_sink_set_bitrate(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, settings->bitrate * 1000);
+        
+        // Update GOP
+        esp_gmf_video_enc_set_gop(venc_hd, settings->gop);
+        
+        // Update QP range
+        esp_gmf_video_enc_set_qp(venc_hd, settings->min_qp, settings->max_qp);
+        
+        ESP_LOGI(TAG, "Encoder settings updated");
+    } else {
+        ESP_LOGW(TAG, "Video encoder not found");
     }
 }

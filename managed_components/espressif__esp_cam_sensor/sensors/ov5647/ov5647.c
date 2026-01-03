@@ -298,6 +298,84 @@ static esp_err_t ov5647_set_stream(esp_cam_sensor_device_t *dev, int enable)
     return ret;
 }
 
+#define OV5647_REG_EXP_HI       0x3500
+#define OV5647_REG_EXP_MID      0x3501
+#define OV5647_REG_EXP_LO       0x3502
+#define OV5647_REG_AEC_AGC      0x3503
+#define OV5647_REG_GAIN_HI      0x350a
+#define OV5647_REG_GAIN_LO      0x350b
+#define OV5647_REG_AWB          0x5001
+
+static esp_err_t ov5647_set_awb(esp_cam_sensor_device_t *dev, int enable)
+{
+    return ov5647_write(dev->sccb_handle, OV5647_REG_AWB, enable ? 1 : 0);
+}
+
+static esp_err_t ov5647_set_agc(esp_cam_sensor_device_t *dev, int enable)
+{
+    esp_err_t ret;
+    uint8_t reg;
+
+    /* Non-zero turns on AGC by clearing bit 1.*/
+    ret = ov5647_read(dev->sccb_handle, OV5647_REG_AEC_AGC, &reg);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return ov5647_write(dev->sccb_handle, OV5647_REG_AEC_AGC, enable ? (reg & ~0x02) : (reg | 0x02));
+}
+
+static esp_err_t ov5647_set_aec(esp_cam_sensor_device_t *dev, int enable)
+{
+    esp_err_t ret;
+    uint8_t reg;
+
+    /*
+     * Everything except V4L2_EXPOSURE_MANUAL turns on AEC by
+     * clearing bit 0.
+     */
+    ret = ov5647_read(dev->sccb_handle, OV5647_REG_AEC_AGC, &reg);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return ov5647_write(dev->sccb_handle, OV5647_REG_AEC_AGC, enable ? (reg & ~0x01) : (reg | 0x01));
+}
+
+static esp_err_t ov5647_set_analogue_gain(esp_cam_sensor_device_t *dev, int val)
+{
+    esp_err_t ret;
+
+    /* 10 bits of gain, 2 in the high register. */
+    ret = ov5647_write(dev->sccb_handle, OV5647_REG_GAIN_HI, (val >> 8) & 3);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return ov5647_write(dev->sccb_handle, OV5647_REG_GAIN_LO, val & 0xff);
+}
+
+static esp_err_t ov5647_set_exposure(esp_cam_sensor_device_t *dev, int val)
+{
+    esp_err_t ret;
+
+    /*
+     * Sensor has 20 bits, but the bottom 4 bits are fractions of a line
+     * which we leave as zero (and don't receive in "val").
+     */
+    ret = ov5647_write(dev->sccb_handle, OV5647_REG_EXP_HI, (val >> 12) & 0xf);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = ov5647_write(dev->sccb_handle, OV5647_REG_EXP_MID, (val >> 4) & 0xff);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return ov5647_write(dev->sccb_handle, OV5647_REG_EXP_LO, (val & 0xf) << 4);
+}
+
 static esp_err_t ov5647_set_mirror(esp_cam_sensor_device_t *dev, int enable)
 {
     return ov5647_set_reg_bits(dev->sccb_handle, 0x3821, 1, 1, enable ? 0x01 : 0x00);
@@ -353,6 +431,29 @@ static esp_err_t ov5647_query_para_desc(esp_cam_sensor_device_t *dev, esp_cam_se
         qdesc->number.step = 1;
         qdesc->default_value = OV5647_AE_TARGET_DEFAULT;
         break;
+    case ESP_CAM_SENSOR_AWB:
+    case ESP_CAM_SENSOR_AGC:
+    case ESP_CAM_SENSOR_AE_CONTROL:
+        qdesc->type = ESP_CAM_SENSOR_PARAM_TYPE_NUMBER;
+        qdesc->number.minimum = 0;
+        qdesc->number.maximum = 1;
+        qdesc->number.step = 1;
+        qdesc->default_value = 1;
+        break;
+    case ESP_CAM_SENSOR_INT_TIME:
+        qdesc->type = ESP_CAM_SENSOR_PARAM_TYPE_NUMBER;
+        qdesc->number.minimum = 4;
+        qdesc->number.maximum = 65535;
+        qdesc->number.step = 1;
+        qdesc->default_value = 1000;
+        break;
+    case ESP_CAM_SENSOR_ANGAIN:
+        qdesc->type = ESP_CAM_SENSOR_PARAM_TYPE_NUMBER;
+        qdesc->number.minimum = 16;
+        qdesc->number.maximum = 1023;
+        qdesc->number.step = 1;
+        qdesc->default_value = 32;
+        break;
     default: {
         ESP_LOGD(TAG, "id=%"PRIx32" is not supported", qdesc->id);
         ret = ESP_ERR_INVALID_ARG;
@@ -388,6 +489,31 @@ static esp_err_t ov5647_set_para_value(esp_cam_sensor_device_t *dev, uint32_t id
         int *value = (int *)arg;
 
         ret = ov5647_set_AE_target(dev, *value);
+        break;
+    }
+    case ESP_CAM_SENSOR_AWB: {
+        int *value = (int *)arg;
+        ret = ov5647_set_awb(dev, *value);
+        break;
+    }
+    case ESP_CAM_SENSOR_AGC: {
+        int *value = (int *)arg;
+        ret = ov5647_set_agc(dev, *value);
+        break;
+    }
+    case ESP_CAM_SENSOR_AE_CONTROL: {
+        int *value = (int *)arg;
+        ret = ov5647_set_aec(dev, *value);
+        break;
+    }
+    case ESP_CAM_SENSOR_INT_TIME: {
+        int *value = (int *)arg;
+        ret = ov5647_set_exposure(dev, *value);
+        break;
+    }
+    case ESP_CAM_SENSOR_ANGAIN: {
+        int *value = (int *)arg;
+        ret = ov5647_set_analogue_gain(dev, *value);
         break;
     }
     default: {
