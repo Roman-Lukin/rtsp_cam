@@ -18,8 +18,12 @@ typedef struct {
     
     // White Balance
     bool auto_white_balance;
-    int wb_red_gain;         // Manual WB gains (if AWB disabled)
+    int wb_red_gain;         // Manual WB gains (if AWB disabled) 0x000-0xFFF
+    int wb_green_gain;
     int wb_blue_gain;
+    
+    // Test pattern
+    int test_pattern;        // 0=off, 0x80=bars, 0x82=squares
     
     // ISP settings
     bool denoise_enable;

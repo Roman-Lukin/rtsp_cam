@@ -8,10 +8,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <linux/videodev2.h>
+#include "linux/videodev2.h"
+#include "esp_video_device.h"
 #include "esp_video_isp_ioctl.h"
-
-extern int get_camera_fd(void);
+#include "ov5647_helper.h"
 
 static const char *TAG = "HTTP_SERVER";
 
@@ -28,138 +28,107 @@ void http_server_set_settings_callback(settings_change_cb_t callback)
     settings_callback = callback;
 }
 
-// Load current camera settings from V4L2
+// Load current camera settings
+// Note: OV5647 sensor settings are stored in memory (not read back from sensor)
+// ISP settings can be read from V4L2
 static void load_current_settings(void)
 {
-    int fd = get_camera_fd();
-    if (fd < 0) {
-        ESP_LOGE(TAG, "Failed to get camera FD");
-        return;
-    }
-    
-    struct v4l2_control ctrl;
-    
-    // Auto exposure
-    ctrl.id = V4L2_CID_EXPOSURE_AUTO;
-    if (ioctl(fd, VIDIOC_G_CTRL, &ctrl) == 0) {
-        current_settings.auto_exposure = (ctrl.value == V4L2_EXPOSURE_AUTO);
-    }
-    
-    // Exposure value
-    ctrl.id = V4L2_CID_EXPOSURE;
-    if (ioctl(fd, VIDIOC_G_CTRL, &ctrl) == 0) {
-        current_settings.exposure_value = ctrl.value;
-    }
-    
-    // Gain
-    ctrl.id = V4L2_CID_GAIN;
-    if (ioctl(fd, VIDIOC_G_CTRL, &ctrl) == 0) {
-        current_settings.gain = ctrl.value;
-    }
-    
-    // Auto white balance
-    ctrl.id = V4L2_CID_AUTO_WHITE_BALANCE;
-    if (ioctl(fd, VIDIOC_G_CTRL, &ctrl) == 0) {
-        current_settings.auto_white_balance = ctrl.value;
-    }
-    
-    // Power line frequency
-    ctrl.id = V4L2_CID_POWER_LINE_FREQUENCY;
-    if (ioctl(fd, VIDIOC_G_CTRL, &ctrl) == 0) {
-        current_settings.power_line_freq = ctrl.value;
-    }
-    
-    // ISP Bayer Filter (Denoise)
-    struct v4l2_ext_controls ctrls;
-    struct v4l2_ext_control ctrl_ext[1];
-    esp_video_isp_bf_t bf_cfg;
-    
-    memset(&ctrls, 0, sizeof(ctrls));
-    memset(ctrl_ext, 0, sizeof(ctrl_ext));
-    
-    ctrls.ctrl_class = V4L2_CID_USER_CLASS;
-    ctrls.count = 1;
-    ctrls.controls = ctrl_ext;
-    ctrl_ext[0].id = V4L2_CID_USER_ESP_ISP_BF;
-    ctrl_ext[0].size = sizeof(esp_video_isp_bf_t);
-    ctrl_ext[0].p_u8 = (uint8_t *)&bf_cfg;
-    
-    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &ctrls) == 0) {
-        current_settings.denoise_enable = bf_cfg.enable;
-        current_settings.denoise_level = bf_cfg.level;
-    }
-    
-    // close(fd); // Do not close shared FD
-    
-    // Default encoder settings if not set
-    if (current_settings.bitrate == 0) {
+    // Set defaults for sensor settings (stored in memory)
+    // These will be overwritten when user changes them
+    static bool initialized = false;
+    if (!initialized) {
+        current_settings.auto_exposure = true;
+        current_settings.exposure_value = 200;
+        current_settings.gain = 16;
+        current_settings.auto_white_balance = true;
+        current_settings.wb_red_gain = 0x400;
+        current_settings.wb_green_gain = 0x400;
+        current_settings.wb_blue_gain = 0x400;
+        current_settings.test_pattern = 0;
+        current_settings.power_line_freq = 1;  // 50Hz default
         current_settings.bitrate = 6000;
         current_settings.gop = 25;
         current_settings.min_qp = 20;
         current_settings.max_qp = 35;
+        current_settings.denoise_enable = true;
+        current_settings.denoise_level = 10;
+        initialized = true;
     }
+    // All settings stored in memory - V4L2/ISP controls not supported by OV5647 driver
 }
 
-// Apply camera settings via V4L2
-static esp_err_t apply_camera_settings(camera_settings_t *settings)
+// Set ISP White Balance via V4L2 device
+static esp_err_t set_isp_white_balance(bool enable, float red_gain, float blue_gain)
 {
-    int fd = get_camera_fd();
-    if (fd < 0) {
-        ESP_LOGE(TAG, "Failed to get camera FD");
+    int isp_fd = open(ESP_VIDEO_ISP1_DEVICE_NAME, O_RDWR);
+    if (isp_fd < 0) {
+        ESP_LOGE(TAG, "Failed to open ISP device %s", ESP_VIDEO_ISP1_DEVICE_NAME);
+        return ESP_ERR_NOT_FOUND;
+    }
+    
+    esp_video_isp_wb_t wb_config = {
+        .enable = enable,
+        .red_gain = red_gain,
+        .blue_gain = blue_gain
+    };
+    
+    struct v4l2_ext_controls controls = {
+        .ctrl_class = V4L2_CID_USER_CLASS,
+        .count = 1,
+    };
+    struct v4l2_ext_control control = {
+        .id = V4L2_CID_USER_ESP_ISP_WB,
+        .size = sizeof(esp_video_isp_wb_t),
+        .p_u8 = (uint8_t *)&wb_config
+    };
+    controls.controls = &control;
+    
+    int ret = ioctl(isp_fd, VIDIOC_S_EXT_CTRLS, &controls);
+    close(isp_fd);
+    
+    if (ret != 0) {
+        ESP_LOGE(TAG, "Failed to set ISP WB: %d", ret);
         return ESP_FAIL;
     }
     
-    struct v4l2_control ctrl;
+    ESP_LOGI(TAG, "ISP WB set: enable=%d, R=%.2f, B=%.2f", enable, red_gain, blue_gain);
+    return ESP_OK;
+}
+
+// Apply camera settings via I2C (OV5647) and V4L2 (ISP)
+static esp_err_t apply_camera_settings(camera_settings_t *settings)
+{
+    // ===== OV5647 Sensor Settings (via I2C) =====
     
-    // Auto exposure
-    ctrl.id = V4L2_CID_EXPOSURE_AUTO;
-    ctrl.value = settings->auto_exposure ? V4L2_EXPOSURE_AUTO : V4L2_EXPOSURE_MANUAL;
-    ioctl(fd, VIDIOC_S_CTRL, &ctrl);
+    // Auto Exposure / Auto Gain
+    ov5647_set_auto_exposure(settings->auto_exposure);
     
-    // Exposure value (only if manual)
+    // Manual Exposure and Gain (only if auto is disabled)
     if (!settings->auto_exposure) {
-        ctrl.id = V4L2_CID_EXPOSURE;
-        ctrl.value = settings->exposure_value;
-        ioctl(fd, VIDIOC_S_CTRL, &ctrl);
+        ov5647_set_exposure(settings->exposure_value);
+        ov5647_set_gain(settings->gain);
     }
     
-    // Gain
-    ctrl.id = V4L2_CID_GAIN;
-    ctrl.value = settings->gain;
-    ioctl(fd, VIDIOC_S_CTRL, &ctrl);
-    
-    // Auto white balance
-    ctrl.id = V4L2_CID_AUTO_WHITE_BALANCE;
-    ctrl.value = settings->auto_white_balance;
-    ioctl(fd, VIDIOC_S_CTRL, &ctrl);
-    
-    // Power line frequency
-    ctrl.id = V4L2_CID_POWER_LINE_FREQUENCY;
-    ctrl.value = settings->power_line_freq;
-    ioctl(fd, VIDIOC_S_CTRL, &ctrl);
-    
-    // ISP Bayer Filter (Denoise)
-    struct v4l2_ext_controls ctrls;
-    struct v4l2_ext_control ctrl_ext[1];
-    esp_video_isp_bf_t bf_cfg;
-    
-    memset(&ctrls, 0, sizeof(ctrls));
-    memset(ctrl_ext, 0, sizeof(ctrl_ext));
-    
-    ctrls.ctrl_class = V4L2_CID_USER_CLASS;
-    ctrls.count = 1;
-    ctrls.controls = ctrl_ext;
-    ctrl_ext[0].id = V4L2_CID_USER_ESP_ISP_BF;
-    ctrl_ext[0].size = sizeof(esp_video_isp_bf_t);
-    ctrl_ext[0].p_u8 = (uint8_t *)&bf_cfg;
-    
-    if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &ctrls) == 0) {
-        bf_cfg.enable = settings->denoise_enable;
-        bf_cfg.level = settings->denoise_level;
-        ioctl(fd, VIDIOC_S_EXT_CTRLS, &ctrls);
+    // ===== ISP White Balance (via V4L2) =====
+    // ISP Pipeline Controller nadpisuje rejestry sensora, 
+    // więc musimy sterować przez ISP device
+    if (settings->auto_white_balance) {
+        // Auto WB - wyłącz manualny ISP WB, pozwól ISP Pipeline sterować
+        set_isp_white_balance(false, 1.0f, 1.0f);
+    } else {
+        // Manual WB - ustaw gainy w ISP
+        // Konwersja z zakresu UI (256-4095, gdzie 1024=1.0) na float
+        float red_gain = (float)settings->wb_red_gain / 1024.0f;
+        float blue_gain = (float)settings->wb_blue_gain / 1024.0f;
+        // Green gain jest reference (1.0), red/blue są relative
+        set_isp_white_balance(true, red_gain, blue_gain);
     }
     
-    // close(fd); // Do not close shared FD
+    // Test Pattern (sensor register)
+    ov5647_set_test_pattern(settings->test_pattern);
+    
+    // Note: ISP Bayer Filter (Denoise) not supported
+    // Settings stored in memory only
     
     // Update current settings
     current_settings = *settings;
@@ -193,6 +162,10 @@ static esp_err_t get_settings_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(json, "exposure_value", current_settings.exposure_value);
     cJSON_AddNumberToObject(json, "gain", current_settings.gain);
     cJSON_AddBoolToObject(json, "auto_white_balance", current_settings.auto_white_balance);
+    cJSON_AddNumberToObject(json, "wb_red_gain", current_settings.wb_red_gain);
+    cJSON_AddNumberToObject(json, "wb_green_gain", current_settings.wb_green_gain);
+    cJSON_AddNumberToObject(json, "wb_blue_gain", current_settings.wb_blue_gain);
+    cJSON_AddNumberToObject(json, "test_pattern", current_settings.test_pattern);
     cJSON_AddBoolToObject(json, "denoise_enable", current_settings.denoise_enable);
     cJSON_AddNumberToObject(json, "denoise_level", current_settings.denoise_level);
     cJSON_AddNumberToObject(json, "power_line_freq", current_settings.power_line_freq);
@@ -244,6 +217,14 @@ static esp_err_t post_settings_handler(httpd_req_t *req)
         new_settings.gain = item->valueint;
     if ((item = cJSON_GetObjectItem(json, "auto_white_balance"))) 
         new_settings.auto_white_balance = cJSON_IsTrue(item);
+    if ((item = cJSON_GetObjectItem(json, "wb_red_gain"))) 
+        new_settings.wb_red_gain = item->valueint;
+    if ((item = cJSON_GetObjectItem(json, "wb_green_gain"))) 
+        new_settings.wb_green_gain = item->valueint;
+    if ((item = cJSON_GetObjectItem(json, "wb_blue_gain"))) 
+        new_settings.wb_blue_gain = item->valueint;
+    if ((item = cJSON_GetObjectItem(json, "test_pattern"))) 
+        new_settings.test_pattern = item->valueint;
     if ((item = cJSON_GetObjectItem(json, "denoise_enable"))) 
         new_settings.denoise_enable = cJSON_IsTrue(item);
     if ((item = cJSON_GetObjectItem(json, "denoise_level"))) 

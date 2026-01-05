@@ -80,6 +80,25 @@ void ov5647_set_vts(uint16_t vts);
 uint16_t ov5647_get_vts(void);
 
 /**
+ * @brief Enable/Disable Auto Exposure (AEC) and Auto Gain (AGC).
+ * 
+ * @param enable true = auto, false = manual
+ */
+void ov5647_set_auto_exposure(bool enable);
+
+/**
+ * @brief Enable/Disable Auto White Balance.
+ * 
+ * @param enable true = auto, false = manual
+ */
+void ov5647_set_auto_white_balance(bool enable);
+
+/**
+ * @brief Debug: Print current WB register status.
+ */
+void ov5647_debug_wb_status(void);
+
+/**
  * @brief Configure OV5647 camera controls directly via I2C.
  * Registers according to official OV5647 documentation.
  */

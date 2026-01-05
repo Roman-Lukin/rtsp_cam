@@ -28,6 +28,7 @@
 #include "driver/i2c_master.h"
 
 #include "esp_h264_enc_param_hw.h"
+#include "esp_h264_enc_single_hw.h"
 #include "esp_gmf_video_element.h"
 #include "esp_video_enc.h"
 
@@ -69,10 +70,18 @@ typedef struct {
     venc_extra_set_t         extra_set;    /*!< Video encoder extra setting */
 } venc_t;
 
+// video_enc_t from esp_video_enc.c - wrapper around codec-specific impl
 typedef struct {
-    const void *ops;
-    void *enc_handle;
-} video_enc_impl_t;
+    const void *ops;                        // esp_video_enc_ops_t*
+    esp_video_enc_handle_t enc_handle;      // Points to hw_h264_t
+} video_enc_t;
+
+// hw_h264_t from esp_video_enc_h264.c - actual H.264 encoder context
+typedef struct {
+    esp_h264_enc_handle_t enc_handle;       // H.264 encoder handle
+    esp_h264_enc_param_handle_t param_handle;
+    // rest of fields not needed
+} hw_h264_t;
 // --- HACK: Private struct from capture_video_v4l2_src.c ---
 // Needed to access FD for V4L2 controls
 #define MAX_SUPPORT_FORMATS_NUM (4)
@@ -157,46 +166,64 @@ static void capture_task(void *pvParameters)
     
     ESP_LOGI(TAG, "Capture task started");
 
-    // --- Motion Vector Setup ---
+    // --- Motion Vector Setup (DISABLED - causes pipeline issues) ---
+    // MV requires tight integration with encoder pipeline timing
+    // TODO: Implement proper MV handling with pre-allocated aligned buffers
     esp_h264_enc_param_hw_handle_t h264_hw_handle = NULL;
+    uint8_t *mv_buf = NULL;
+    size_t mv_buf_size = 0;
+    bool last_motion_state = false;
+    
+#if 0  // Motion Vector code disabled for now
     esp_gmf_element_handle_t venc_hd = NULL;
     esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
     
     if (venc_hd) {
         venc_t *venc = (venc_t *)venc_hd;
         if (venc->enc_handle) {
-            video_enc_impl_t *venc_impl = (video_enc_impl_t *)venc->enc_handle;
-            h264_hw_handle = (esp_h264_enc_param_hw_handle_t)venc_impl->enc_handle;
+            // venc->enc_handle is video_enc_t* (wrapper)
+            video_enc_t *video_enc = (video_enc_t *)venc->enc_handle;
+            // video_enc->enc_handle is hw_h264_t* (codec-specific)
+            hw_h264_t *hw_h264 = (hw_h264_t *)video_enc->enc_handle;
             
-            if (h264_hw_handle) {
-                ESP_LOGI(TAG, "Found H.264 HW handle: %p", h264_hw_handle);
+            if (hw_h264 && hw_h264->enc_handle) {
+                // Use official API to get param handle from H.264 enc_handle
+                esp_h264_err_t h264_ret = esp_h264_enc_hw_get_param_hd(hw_h264->enc_handle, &h264_hw_handle);
                 
-                esp_h264_enc_mv_cfg_t mv_cfg = {
-                    .mv_mode = ESP_H264_MVM_MODE_P16X16,
-                    .mv_fmt  = ESP_H264_MVM_FMT_ALL,
-                };
-                esp_h264_err_t ret = esp_h264_enc_hw_cfg_mv(h264_hw_handle, mv_cfg);
-                if (ret == ESP_H264_ERR_OK) {
-                    ESP_LOGI(TAG, "Motion Vectors Enabled!");
+                if (h264_ret == ESP_H264_ERR_OK && h264_hw_handle) {
+                    ESP_LOGI(TAG, "Found H.264 HW handle: %p", h264_hw_handle);
+                    
+                    esp_h264_enc_mv_cfg_t mv_cfg = {
+                        .mv_mode = ESP_H264_MVM_MODE_P16X16,
+                        .mv_fmt  = ESP_H264_MVM_FMT_ALL,
+                    };
+                    esp_h264_err_t ret = esp_h264_enc_hw_cfg_mv(h264_hw_handle, mv_cfg);
+                    if (ret == ESP_H264_ERR_OK) {
+                        ESP_LOGI(TAG, "Motion Vectors Enabled!");
+                    } else {
+                        ESP_LOGE(TAG, "Failed to enable Motion Vectors: %d", ret);
+                        h264_hw_handle = NULL;
+                    }
                 } else {
-                    ESP_LOGE(TAG, "Failed to enable Motion Vectors: %d", ret);
-                    h264_hw_handle = NULL;
+                    ESP_LOGE(TAG, "Failed to get H.264 param handle: %d", h264_ret);
                 }
             }
         }
     }
     
-    size_t mv_buf_size = (VIDEO_WIDTH / 16) * (VIDEO_HEIGHT / 16) * sizeof(esp_h264_enc_mv_data_t);
-    uint8_t *mv_buf = heap_caps_malloc(mv_buf_size, MALLOC_CAP_SPIRAM);
+    mv_buf_size = (VIDEO_WIDTH / 16) * (VIDEO_HEIGHT / 16) * sizeof(esp_h264_enc_mv_data_t);
+    // Align to cache line size (64 bytes)
+    mv_buf_size = (mv_buf_size + 63) & ~63;
+    mv_buf = heap_caps_aligned_alloc(64, mv_buf_size, MALLOC_CAP_SPIRAM);
     if (!mv_buf) {
         ESP_LOGE(TAG, "Failed to allocate MV buffer");
     }
+#endif  // Motion Vector code disabled
     // ---------------------------
 
     uint32_t frame_count = 0;
     uint32_t last_log_time = 0;
     uint32_t start_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    bool last_motion_state = false;
     
     while (capture_running) {
         // --- Set MV Packet for NEXT frame ---
