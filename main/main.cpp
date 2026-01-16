@@ -13,6 +13,8 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "driver/i2c_master.h"
+#include "driver/gpio.h"
+// #include "driver/ledc.h"  // Not needed - IMX219 has internal oscillator
 
 #include "codec_board.h"
 #include "codec_init.h"
@@ -27,12 +29,6 @@
 
 #include "esp_video_enc_default.h"
 #include "esp_gmf_video_enc.h"
-
-#include "esp_h264_enc_param_hw.h"
-#include "esp_h264_enc_single_hw.h"
-#include "esp_gmf_video_element.h"
-#include "esp_video_enc.h"
-#include "esp_cache.h"
 
 #include "esp_video_isp_ioctl.h"
 
@@ -59,10 +55,181 @@ namespace {
     // Frame capture task
     TaskHandle_t capture_task_handle = nullptr;
     volatile bool capture_running = false;
+    
+    // Detected sensor type
+    enum class SensorType {
+        NONE,
+        OV5647,
+        IMX219
+    };
+    SensorType detected_sensor = SensorType::NONE;
 }
 
 // Forward declarations
 static void on_settings_change(const camera_settings_t *settings);
+
+// Camera GPIO pins for your custom board
+#define CAM_PWR_GPIO    GPIO_NUM_48   // CSI_IO0 - Pin 17 on 22-pin FPC = CAM_GPIO (power enable for IMX219)
+#define CAM_XCLK_GPIO   GPIO_NUM_47   // CSI_IO1 - Pin 18 on 22-pin FPC = XCLK/MCLK for IMX219 (24MHz)
+
+// LEDC configuration for XCLK generation (not needed - IMX219 has internal oscillator)
+// #define XCLK_LEDC_TIMER      LEDC_TIMER_0
+// #define XCLK_LEDC_CHANNEL    LEDC_CHANNEL_0
+// #define XCLK_FREQUENCY_HZ    24000000   // 24 MHz for IMX219
+
+#if 0  // IMX219 has internal 24.75MHz oscillator, external XCLK not needed
+/**
+ * @brief Start XCLK signal generation for IMX219
+ * IMX219 requires 24MHz external clock on CAM_IO1 pin
+ * Uses LEDC peripheral to generate the clock signal
+ */
+static esp_err_t start_xclk(void)
+{
+    ESP_LOGI(TAG, "Starting XCLK generation on GPIO%d at %d Hz", CAM_XCLK_GPIO, XCLK_FREQUENCY_HZ);
+    
+    // Configure LEDC timer
+    ledc_timer_config_t timer_conf = {};
+    timer_conf.speed_mode = LEDC_LOW_SPEED_MODE;
+    timer_conf.timer_num = XCLK_LEDC_TIMER;
+    timer_conf.duty_resolution = LEDC_TIMER_1_BIT;  // 1-bit resolution for 50% duty cycle
+    timer_conf.freq_hz = XCLK_FREQUENCY_HZ;
+    timer_conf.clk_cfg = LEDC_AUTO_CLK;
+    
+    esp_err_t ret = ledc_timer_config(&timer_conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "LEDC timer config failed: %d", ret);
+        return ret;
+    }
+    
+    // Configure LEDC channel
+    ledc_channel_config_t channel_conf = {};
+    channel_conf.speed_mode = LEDC_LOW_SPEED_MODE;
+    channel_conf.channel = XCLK_LEDC_CHANNEL;
+    channel_conf.timer_sel = XCLK_LEDC_TIMER;
+    channel_conf.intr_type = LEDC_INTR_DISABLE;
+    channel_conf.gpio_num = CAM_XCLK_GPIO;
+    channel_conf.duty = 1;  // 50% duty cycle with 1-bit resolution
+    channel_conf.hpoint = 0;
+    
+    ret = ledc_channel_config(&channel_conf);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "LEDC channel config failed: %d", ret);
+        return ret;
+    }
+    
+    ESP_LOGI(TAG, "XCLK started successfully");
+    return ESP_OK;
+}
+
+/**
+ * @brief Stop XCLK signal generation
+ */
+static void stop_xclk(void)
+{
+    ledc_stop(LEDC_LOW_SPEED_MODE, XCLK_LEDC_CHANNEL, 0);
+    ESP_LOGI(TAG, "XCLK stopped");
+}
+#endif  // XCLK disabled
+
+/**
+ * @brief Enable camera power for IMX219
+ * IMX219 needs CAM_GPIO HIGH to enable its internal power regulator
+ * OV5647 uses this pin as PWDN (power down) - LOW = active
+ */
+static void enable_camera_power(bool for_imx219)
+{
+    gpio_config_t io_conf = {};
+    io_conf.pin_bit_mask = (1ULL << CAM_PWR_GPIO);
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    gpio_config(&io_conf);
+    
+    if (for_imx219) {
+        // IMX219: HIGH = power regulator enabled
+        gpio_set_level(CAM_PWR_GPIO, 1);
+        ESP_LOGW(TAG, "Camera power GPIO%d set HIGH (IMX219 mode)", CAM_PWR_GPIO);
+    } else {
+        // OV5647: LOW = not in power-down mode (active)
+        gpio_set_level(CAM_PWR_GPIO, 0);
+        ESP_LOGW(TAG, "Camera power GPIO%d set LOW (OV5647 mode)", CAM_PWR_GPIO);
+    }
+    
+    // Wait for power to stabilize - IMX219 needs longer time
+    vTaskDelay(pdMS_TO_TICKS(200));
+}
+
+/**
+ * @brief Scan I2C bus for devices and detect sensor type
+ * @return SensorType (IMX219, OV5647, or NONE)
+ */
+static SensorType i2c_scan_and_detect(i2c_master_bus_handle_t bus_handle)
+{
+    ESP_LOGW(TAG, "========================================");
+    ESP_LOGW(TAG, "  I2C BUS SCAN - Camera Detection");
+    ESP_LOGW(TAG, "========================================");
+    
+    // First enable camera power for IMX219
+    enable_camera_power(true);  // true = IMX219 mode (HIGH)
+    
+    // IMX219 may need more time to fully initialize after power-on
+    ESP_LOGW(TAG, "Waiting 500ms for sensor to initialize...");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    
+    // Check for known sensors
+    SensorType result = SensorType::NONE;
+    int found_count = 0;
+    
+    // Check IMX219 (0x10)
+    if (i2c_master_probe(bus_handle, 0x10, 50) == ESP_OK) {
+        ESP_LOGW(TAG, "  >> FOUND: 0x10 - IMX219");
+        result = SensorType::IMX219;
+        found_count++;
+    }
+    
+    // Check IMX219 alt (0x1A)
+    if (i2c_master_probe(bus_handle, 0x1A, 50) == ESP_OK) {
+        ESP_LOGW(TAG, "  >> FOUND: 0x1A - IMX219 (alt addr)");
+        if (result == SensorType::NONE) result = SensorType::IMX219;
+        found_count++;
+    }
+    
+    // Check OV5647/OV5640 (0x36)
+    if (i2c_master_probe(bus_handle, 0x36, 50) == ESP_OK) {
+        ESP_LOGW(TAG, "  >> FOUND: 0x36 - OV5647/OV5640");
+        if (result == SensorType::NONE) result = SensorType::OV5647;
+        found_count++;
+    }
+    
+    // Full scan for other devices
+    for (uint8_t addr = 0x03; addr <= 0x77; addr++) {
+        if (addr == 0x10 || addr == 0x1A || addr == 0x36) continue;
+        
+        if (i2c_master_probe(bus_handle, addr, 50) == ESP_OK) {
+            ESP_LOGW(TAG, "  >> FOUND: 0x%02X - Unknown device", addr);
+            found_count++;
+        }
+    }
+    
+    if (found_count == 0) {
+        ESP_LOGE(TAG, "  NO DEVICES FOUND ON I2C BUS!");
+        ESP_LOGE(TAG, "  Check: power, reset pin, cable connection");
+    } else {
+        ESP_LOGW(TAG, "  Total devices found: %d", found_count);
+        const char *sensor_name = "NONE";
+        if (result == SensorType::IMX219) sensor_name = "IMX219";
+        else if (result == SensorType::OV5647) sensor_name = "OV5647";
+        ESP_LOGW(TAG, "  >>> Primary sensor: %s <<<", sensor_name);
+    }
+    
+    ESP_LOGW(TAG, "========================================");
+    
+    // Pause for 3 seconds to read the results
+    ESP_LOGW(TAG, "Pausing 3 seconds before continuing...");
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    
+    return result;
+}
 
 /**
  * @brief Get camera file descriptor for V4L2 controls
@@ -87,6 +254,9 @@ static esp_capture_video_src_if_t *create_video_source()
         ESP_LOGE(TAG, "Failed to get camera config");
         return nullptr;
     }
+    
+    ESP_LOGW(TAG, "Camera config: type=%d, pwr=%d, reset=%d, xclk=%d", 
+             cam_pin_cfg.type, cam_pin_cfg.pwr, cam_pin_cfg.reset, cam_pin_cfg.xclk);
 
     if (cam_pin_cfg.type != CAMERA_TYPE_MIPI) {
         ESP_LOGE(TAG, "Only MIPI camera supported on ESP32-P4");
@@ -99,8 +269,24 @@ static esp_capture_video_src_if_t *create_video_source()
 
     csi_config.sccb_config.i2c_handle = i2c_bus_handle;
     csi_config.sccb_config.freq = 100000;
-    csi_config.reset_pin = static_cast<gpio_num_t>(cam_pin_cfg.reset);
-    csi_config.pwdn_pin = static_cast<gpio_num_t>(cam_pin_cfg.pwr);
+    
+    // Set reset pin only if valid (>= 0), otherwise use -1
+    csi_config.reset_pin = (cam_pin_cfg.reset >= 0) ? 
+                           static_cast<gpio_num_t>(cam_pin_cfg.reset) : GPIO_NUM_NC;
+    
+    // For IMX219: pwdn_pin should NOT be used by esp_video (we control it ourselves)
+    // Pass -1 to prevent esp_video from toggling our power pin
+    if (detected_sensor == SensorType::IMX219) {
+        csi_config.pwdn_pin = GPIO_NUM_NC;  // Don't let esp_video control power
+        ESP_LOGW(TAG, "IMX219 mode: pwdn_pin disabled (we control GPIO48 ourselves)");
+    } else {
+        csi_config.pwdn_pin = (cam_pin_cfg.pwr >= 0) ? 
+                              static_cast<gpio_num_t>(cam_pin_cfg.pwr) : GPIO_NUM_NC;
+    }
+    
+    ESP_LOGW(TAG, "CSI config: reset_pin=%d, pwdn_pin=%d", 
+             csi_config.reset_pin, csi_config.pwdn_pin);
+    
     cam_config.csi = &csi_config;
 
     ret = esp_video_init(&cam_config);
@@ -127,134 +313,60 @@ static void capture_task(void *pvParameters)
         .stream_type = ESP_CAPTURE_STREAM_TYPE_VIDEO,
     };
     
-    ESP_LOGI(TAG, "Capture task started");
-
-    // --- Motion Vector Setup ---
-    esp_h264_enc_param_hw_handle_t h264_hw_handle = nullptr;
-    uint8_t *mv_buf = nullptr;
-    size_t mv_buf_size = 0;
-    bool last_motion_state = false;
-    
-    esp_gmf_element_handle_t venc_hd = nullptr;
-    esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
-    
-    if (venc_hd) {
-        auto *venc = reinterpret_cast<venc_t *>(venc_hd);
-        if (venc->enc_handle) {
-            // venc->enc_handle is video_enc_t* (wrapper)
-            auto *video_enc = reinterpret_cast<video_enc_t *>(venc->enc_handle);
-            // video_enc->enc_handle is hw_h264_t* (codec-specific)
-            auto *hw_h264 = reinterpret_cast<hw_h264_t *>(video_enc->enc_handle);
-            
-            if (hw_h264 && hw_h264->enc_handle) {
-                // Use official API to get param handle from H.264 enc_handle
-                esp_h264_err_t h264_ret = esp_h264_enc_hw_get_param_hd(hw_h264->enc_handle, &h264_hw_handle);
-                
-                if (h264_ret == ESP_H264_ERR_OK && h264_hw_handle) {
-                    ESP_LOGI(TAG, "Found H.264 HW handle: %p", h264_hw_handle);
-                    
-                    esp_h264_enc_mv_cfg_t mv_cfg = {
-                        .mv_mode = ESP_H264_MVM_MODE_P16X16,
-                        .mv_fmt  = ESP_H264_MVM_FMT_ALL,
-                    };
-                    esp_h264_err_t ret = esp_h264_enc_hw_cfg_mv(h264_hw_handle, mv_cfg);
-                    if (ret == ESP_H264_ERR_OK) {
-                        ESP_LOGI(TAG, "Motion Vectors Enabled!");
-                    } else {
-                        ESP_LOGE(TAG, "Failed to enable Motion Vectors: %d", ret);
-                        h264_hw_handle = nullptr;
-                    }
-                } else {
-                    ESP_LOGE(TAG, "Failed to get H.264 param handle: %d", h264_ret);
-                }
-            }
-        }
-    }
-    
-    mv_buf_size = (VIDEO_WIDTH / 16) * (VIDEO_HEIGHT / 16) * sizeof(esp_h264_enc_mv_data_t);
-    // Align to cache line size (64 bytes)
-    mv_buf_size = (mv_buf_size + 63) & ~63;
-    mv_buf = static_cast<uint8_t *>(heap_caps_aligned_alloc(64, mv_buf_size, MALLOC_CAP_SPIRAM));
-    if (!mv_buf) {
-        ESP_LOGE(TAG, "Failed to allocate MV buffer");
-    }
+    ESP_LOGI(TAG, "Capture task started - entering loop");
 
     uint32_t frame_count = 0;
+    uint32_t poll_count = 0;
     uint32_t start_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint32_t last_log_time = start_time;
+    
+    ESP_LOGW(TAG, ">>> Polling for frames from capture pipeline...");
     
     while (capture_running) {
-        // --- Set MV Packet for NEXT frame ---
-        if (h264_hw_handle && mv_buf) {
-            esp_h264_enc_mvm_pkt_t mv_pkt = {
-                .data = reinterpret_cast<esp_h264_enc_mv_data_t *>(mv_buf),
-                .len = mv_buf_size,
-            };
-            esp_h264_enc_hw_set_mv_pkt(h264_hw_handle, mv_pkt);
+        uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        poll_count++;
+        
+        // Log heartbeat every 5 seconds
+        if ((now - last_log_time > 5000)) {
+            ESP_LOGW(TAG, ">>> Heartbeat: frames=%lu, polls=%lu, elapsed=%lu ms", 
+                     frame_count, poll_count, now - start_time);
+            last_log_time = now;
         }
 
-        // Acquire frame (blocking with timeout)
-        esp_capture_err_t ret = esp_capture_sink_acquire_frame(capture_sink, &frame, false);
+        // Use non-blocking acquire
+        esp_capture_err_t ret = esp_capture_sink_acquire_frame(capture_sink, &frame, true);
         
         if (ret == ESP_CAPTURE_ERR_OK) {
+            // Got frame!
+            if (frame_count == 0) {
+                ESP_LOGI(TAG, ">>> FIRST FRAME RECEIVED after %lu polls!", poll_count);
+            }
+            
             if (frame.data && frame.size > 0) {
                 frame_count++;
-                
-                // Calculate timestamp in ms from start
-                uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
                 uint32_t timestamp_ms = now - start_time;
-
-                // --- Process MV Data ---
-                if (h264_hw_handle && mv_buf) {
-                    uint32_t mv_count = 0;  // Number of MV elements, NOT bytes!
-                    esp_h264_enc_hw_get_mv_data_len(h264_hw_handle, &mv_count);
-                    if (mv_count > 0) {
-                        // Sync cache before reading DMA-filled buffer
-                        esp_cache_msync(mv_buf, mv_count * sizeof(esp_h264_enc_mv_data_t), 
-                                       ESP_CACHE_MSYNC_FLAG_DIR_M2C);
-                        
-                        // Check for motion
-                        int motion_count = 0;
-                        auto *mvs = reinterpret_cast<esp_h264_enc_mv_data_t *>(mv_buf);
-                        
-                        for (uint32_t i = 0; i < mv_count; i++) {
-                            // Simple threshold: if MV is large enough
-                            if (abs(mvs[i].mv_x) > 4 || abs(mvs[i].mv_y) > 4) {
-                                motion_count++;
-                            }
-                        }
-                        
-                        bool current_motion_state = (motion_count > 50);
-                        if (current_motion_state != last_motion_state) {
-                            if (current_motion_state) {
-                                ESP_LOGI(TAG, "Motion Detected! MBs: %d", motion_count);
-                                // TODO: Trigger LPR
-                            } else {
-                                ESP_LOGI(TAG, "Motion Stopped");
-                            }
-                            last_motion_state = current_motion_state;
-                        }
-                    }
-                }
                 
-                // Feed H.264 frame to RTSP server
                 // Check if frame starts with NAL unit (keyframe detection)
                 bool is_keyframe = false;
                 if (frame.size >= 5) {
-                    // Check for IDR NAL type (0x65) or SPS (0x67)
                     uint8_t nal_type = frame.data[4] & 0x1F;
                     is_keyframe = (nal_type == 5 || nal_type == 7);
                 }
                 
-                // Use our calculated timestamp instead of frame.pts (which seems corrupted)
+                // Log first few frames and then periodically
+                if (frame_count <= 10 || frame_count % 30 == 0) {
+                    ESP_LOGI(TAG, "Frame #%lu: size=%d, keyframe=%d, ts=%lu ms", 
+                             frame_count, frame.size, is_keyframe, timestamp_ms);
+                }
+                
                 rtsp_server_feed_frame(rtsp_server, frame.data, frame.size, 
                                        timestamp_ms, is_keyframe);
             }
             
-            // Release frame back to capture system
             esp_capture_sink_release_frame(capture_sink, &frame);
-        } else if (ret != ESP_CAPTURE_ERR_TIMEOUT) {
-            ESP_LOGW(TAG, "Failed to acquire frame: %d", ret);
-            vTaskDelay(pdMS_TO_TICKS(10));
+        } else {
+            // No frame available - wait ~33ms (30fps rate)
+            vTaskDelay(pdMS_TO_TICKS(33));
         }
     }
     
@@ -269,6 +381,11 @@ extern "C" void app_main()
 {
     esp_err_t ret;
     ESP_LOGI(TAG, "Starting RTSP Camera Application");
+
+    // Enable camera power for IMX219 (GPIO48 HIGH)
+    // Must be done before any camera initialization
+    enable_camera_power(true);  // true = IMX219 mode
+    ESP_LOGI(TAG, "Camera power enabled (IMX219 mode)");
 
     // Create AppParams object (initializes NVS)
     AppParams app_params;
@@ -297,8 +414,18 @@ extern "C" void app_main()
         }
         ESP_LOGI(TAG, "I2C initialized (SDA:%d, SCL:%d)", i2c_pin.sda, i2c_pin.scl);
         
-        // Initialize OV5647 helper
-        ov5647_helper_init(i2c_bus_handle);
+        // Scan I2C bus and detect sensor type
+        detected_sensor = i2c_scan_and_detect(i2c_bus_handle);
+        
+        // Initialize sensor-specific helper (only for OV5647)
+        if (detected_sensor == SensorType::OV5647) {
+            ov5647_helper_init(i2c_bus_handle);
+            ESP_LOGI(TAG, "OV5647 helper initialized");
+        } else if (detected_sensor == SensorType::IMX219) {
+            ESP_LOGI(TAG, "IMX219 detected - no helper needed");
+        } else {
+            ESP_LOGW(TAG, "No known sensor detected!");
+        }
     } else {
         ESP_LOGE(TAG, "Invalid I2C pin configuration");
         return;
@@ -318,8 +445,10 @@ extern "C" void app_main()
 
     // Wstępne ustawienia kamery przed uruchomieniem pipeline
     vTaskDelay(pdMS_TO_TICKS(50));
-    setup_camera_controls();  // Podstawowa inicjalizacja OV5647
-    app_params.apply_to_camera();
+    if (detected_sensor == SensorType::OV5647) {
+        setup_camera_controls();  // Podstawowa inicjalizacja OV5647
+        app_params.apply_to_camera();
+    }
 
     // Create capture system (video only, no audio for RTSP streaming)
     ESP_LOGI(TAG, "Setting up capture system...");
@@ -352,9 +481,9 @@ extern "C" void app_main()
     }
 
     // Set video bitrate to limit H.264 encoder output size
-    // For 1280x960@25fps, use 6Mbps for good quality during motion
-    esp_capture_sink_set_bitrate(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, 6000000);
-    ESP_LOGI(TAG, "Video bitrate set to 6 Mbps");
+    // For 1280x720@30fps, 3Mbps is good quality
+    esp_capture_sink_set_bitrate(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, 3000000);
+    ESP_LOGI(TAG, "Video bitrate set to 3 Mbps");
 
     // Set GOP to 25 (1 second) to reduce artifact persistence
     esp_gmf_element_handle_t venc_hd = nullptr;
@@ -363,10 +492,10 @@ extern "C" void app_main()
         esp_gmf_video_enc_set_gop(venc_hd, VIDEO_FPS);
         ESP_LOGI(TAG, "GOP set to %d frames (1 second)", VIDEO_FPS);
         
-        // Set QP range for better quality (lower = better quality, higher file size)
-        // min_qp=20, max_qp=35 gives good balance for motion
-        esp_gmf_video_enc_set_qp(venc_hd, 20, 35);
-        ESP_LOGI(TAG, "QP range set to 20-35");
+        // Set QP range for good quality at 720p
+        // min_qp=20, max_qp=38 gives good balance
+        esp_gmf_video_enc_set_qp(venc_hd, 20, 38);
+        ESP_LOGI(TAG, "QP range set to 20-38");
     }
 
     // Start RTSP Server
@@ -390,18 +519,26 @@ extern "C" void app_main()
         ESP_LOGW(TAG, "Failed to start HTTP server (non-critical)");
     }
 
-    // Enable sink and start capture
+    // Enable sink first, then start capture
+    // The esp_capture example does it this way
     esp_capture_sink_enable(capture_sink, ESP_CAPTURE_RUN_MODE_ALWAYS);
+    
     cap_ret = esp_capture_start(capture_handle);
     if (cap_ret != ESP_CAPTURE_ERR_OK) {
         ESP_LOGE(TAG, "Failed to start capture: %d", cap_ret);
         return;
     }
+    ESP_LOGI(TAG, "Capture pipeline started successfully");
+
+    // Wait for pipeline to stabilize and first frames to flow
+    ESP_LOGI(TAG, "Waiting 500ms for pipeline to stabilize...");
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     // Ponowna próba ustawień po starcie pipeline (niektóre sterowniki akceptują dopiero po STREAMON)
-    vTaskDelay(pdMS_TO_TICKS(100));
-    setup_camera_controls();  // Podstawowa inicjalizacja OV5647
-    app_params.apply_to_camera();
+    if (detected_sensor == SensorType::OV5647) {
+        setup_camera_controls();  // Podstawowa inicjalizacja OV5647
+        app_params.apply_to_camera();
+    }
 
     // Start capture task
     capture_running = true;

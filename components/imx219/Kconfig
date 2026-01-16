@@ -1,0 +1,61 @@
+menu "IMX219 Camera Sensor"
+    
+    config CAMERA_IMX219
+        bool
+        default y
+
+    config CAMERA_IMX219_AUTO_DETECT_MIPI_INTERFACE_SENSOR
+        bool "Auto-detect IMX219 MIPI CSI interface sensor"
+        default y
+        help
+            Enable automatic detection of IMX219 sensor on MIPI CSI interface.
+
+    config CAMERA_IMX219_CSI_LINESYNC_ENABLE
+        bool "Enable MIPI CSI line sync"
+        default n
+        help
+            Enable line synchronization for MIPI CSI interface.
+
+    choice CAMERA_IMX219_MIPI_DEFAULT_FMT
+        bool "IMX219 default MIPI format"
+        default CAMERA_IMX219_MIPI_RAW10_1920x1080_30FPS
+        help
+            Select the default MIPI format for IMX219 sensor.
+
+        config CAMERA_IMX219_MIPI_RAW10_1920x1080_30FPS
+            bool "RAW10 1920x1080 30fps"
+        config CAMERA_IMX219_MIPI_RAW10_1280x720_60FPS
+            bool "RAW10 1280x720 60fps"
+        config CAMERA_IMX219_MIPI_RAW10_640x480_90FPS
+            bool "RAW10 640x480 90fps"
+        config CAMERA_IMX219_MIPI_RAW10_3280x2464_15FPS
+            bool "RAW10 3280x2464 15fps (full res)"
+    endchoice
+
+    config CAMERA_IMX219_MIPI_IF_FORMAT_INDEX_DEFAULT
+        int
+        default 0 if CAMERA_IMX219_MIPI_RAW10_1920x1080_30FPS
+        default 1 if CAMERA_IMX219_MIPI_RAW10_1280x720_60FPS
+        default 2 if CAMERA_IMX219_MIPI_RAW10_640x480_90FPS
+        default 3 if CAMERA_IMX219_MIPI_RAW10_3280x2464_15FPS
+
+    choice CAMERA_IMX219_IPA_JSON_CONFIGURATION_FILE
+        bool "IMX219 IPA JSON configuration file"
+        default CAMERA_IMX219_DEFAULT_IPA_JSON_CONFIGURATION_FILE
+        help
+            Select IPA JSON configuration file for IMX219 sensor.
+
+        config CAMERA_IMX219_DEFAULT_IPA_JSON_CONFIGURATION_FILE
+            bool "Use default IPA JSON configuration file"
+        config CAMERA_IMX219_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE
+            bool "Use customized IPA JSON configuration file"
+    endchoice
+
+    config CAMERA_IMX219_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE_PATH
+        string "Customized IPA JSON configuration file path"
+        default ""
+        depends on CAMERA_IMX219_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE
+        help
+            Path to customized IPA JSON configuration file for IMX219 sensor.
+
+endmenu

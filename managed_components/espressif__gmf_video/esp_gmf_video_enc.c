@@ -23,7 +23,8 @@
 #define MAX_ENC_TYPE_SUPPORT         4
 // TODO this is estimated value so that each frame not over the size
 #define MJPEG_ENC_MIN_COMPRESS_RATIO 10
-#define H264_ENC_MIN_COMPRESS_RATIO  2
+// Increase output buffer to avoid "The out buffer is too small" with IMX219 I-frames
+#define H264_ENC_MIN_COMPRESS_RATIO  1
 
 #define COPY_ARG(dst, src, offset, size, total_len) \
     if (offset + size <= total_len) {               \
@@ -178,6 +179,8 @@ static esp_gmf_job_err_t venc_el_open(esp_gmf_video_element_handle_t self, void 
         venc_get_frame_size(venc, &in_frame_size, &out_frame_size);
         ESP_GMF_ELEMENT_GET(venc)->in_attr.data_size = in_frame_size;
         ESP_GMF_ELEMENT_GET(venc)->out_attr.data_size = out_frame_size;
+        ESP_LOGI(TAG, "H264 encoder buffers: in=%d, out=%d (ratio=%d)",
+             in_frame_size, out_frame_size, H264_ENC_MIN_COMPRESS_RATIO);
         venc_el_apply_settings(venc, VENC_EXTRA_SET_MASK_ALL);
     }
     // Report info to next element

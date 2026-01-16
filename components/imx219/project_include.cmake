@@ -1,0 +1,10 @@
+# IMX219 IPA configuration
+# This file is automatically included by ESP-IDF build system
+
+if(CONFIG_CAMERA_IMX219)
+    if(CONFIG_CAMERA_IMX219_DEFAULT_IPA_JSON_CONFIGURATION_FILE)
+        idf_build_set_property(ESP_IPA_JSON_CONFIG_FILE_PATH "${CMAKE_CURRENT_LIST_DIR}/cfg/imx219_default.json" APPEND)
+    elseif(CONFIG_CAMERA_IMX219_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE)
+        idf_build_set_property(ESP_IPA_JSON_CONFIG_FILE_PATH ${CONFIG_CAMERA_IMX219_CUSTOMIZED_IPA_JSON_CONFIGURATION_FILE_PATH} APPEND)
+    endif()
+endif()
