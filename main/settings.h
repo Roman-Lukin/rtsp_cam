@@ -13,11 +13,10 @@ extern "C" {
 #endif
 
 #if CONFIG_IDF_TARGET_ESP32P4
-// Using 1280x960 binning mode - native OV5647 resolution
-// 1080p has buffer overflow issues with H.264 HW encoder
-#define VIDEO_WIDTH  1280
-#define VIDEO_HEIGHT 960
-#define VIDEO_FPS    25
+// Using RAW10 1920x1080 mode (camera runs at 30fps)
+#define VIDEO_WIDTH  1920
+#define VIDEO_HEIGHT 1080
+#define VIDEO_FPS    24
 #else
 #define VIDEO_WIDTH  320
 #define VIDEO_HEIGHT 240

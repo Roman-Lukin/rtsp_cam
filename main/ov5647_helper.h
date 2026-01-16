@@ -4,6 +4,10 @@
 #include "esp_err.h"
 #include "driver/i2c_master.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief Initialize the OV5647 helper with the I2C bus handle.
  * 
@@ -103,3 +107,7 @@ void ov5647_debug_wb_status(void);
  * Registers according to official OV5647 documentation.
  */
 void setup_camera_controls(void);
+
+#ifdef __cplusplus
+}
+#endif

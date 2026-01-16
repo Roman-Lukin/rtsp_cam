@@ -36,7 +36,7 @@ typedef struct {
     .rtp_port_base = 5000,             \
     .width = 1920,                     \
     .height = 1080,                    \
-    .fps = 25,                         \
+    .fps = 24,                         \
     .bitrate = 2000000,                \
     .max_clients = 2,                  \
 }

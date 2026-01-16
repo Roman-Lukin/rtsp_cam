@@ -1,15 +1,18 @@
 #include <stdio.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/videodev2.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
-#include "nvs_flash.h"
 #include "esp_event.h"
 #include "esp_netif.h"
-#include "network.h"
-#include "settings.h"
+#include "driver/i2c_master.h"
 
 #include "codec_board.h"
 #include "codec_init.h"
@@ -25,125 +28,85 @@
 #include "esp_video_enc_default.h"
 #include "esp_gmf_video_enc.h"
 
-#include "driver/i2c_master.h"
-
 #include "esp_h264_enc_param_hw.h"
 #include "esp_h264_enc_single_hw.h"
 #include "esp_gmf_video_element.h"
 #include "esp_video_enc.h"
+#include "esp_cache.h"
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/ioctl.h>
-#include <linux/videodev2.h>
 #include "esp_video_isp_ioctl.h"
 
+#include "network.h"
+#include "settings.h"
+#include "app_params.h"
 #include "rtsp_server.h"
 #include "http_server.h"
 #include "ov5647_helper.h"
+#include "main_types.h"
 
-// --- HACK: Private structs from esp_gmf_video_enc.c and esp_video_enc.c ---
-// Needed to access H.264 HW handle for Motion Vectors
+namespace {
+    constexpr const char *TAG = "RTSP_CAM";
 
-typedef enum {
-    VENC_EXTRA_SET_MASK_NONE    = 0,
-    VENC_EXTRA_SET_MASK_BITRATE = (1 << 0),
-    VENC_EXTRA_SET_MASK_QP      = (1 << 1),
-    VENC_EXTRA_SET_MASK_GOP     = (1 << 2),
-    VENC_EXTRA_SET_MASK_ALL     = (0xFF),
-} venc_extra_set_mask_t;
+    // I2C bus handle for camera SCCB
+    i2c_master_bus_handle_t i2c_bus_handle = nullptr;
 
-typedef struct {
-    uint32_t               bitrate;
-    uint32_t               min_qp;
-    uint32_t               max_qp;
-    uint32_t               gop;
-    venc_extra_set_mask_t  mask;
-} venc_extra_set_t;
+    // Capture system handles
+    esp_capture_handle_t capture_handle = nullptr;
+    esp_capture_video_src_if_t *video_src = nullptr;
+    esp_capture_sink_handle_t capture_sink = nullptr;
+    rtsp_server_handle_t rtsp_server = nullptr;
 
-typedef struct {
-    esp_gmf_video_element_t  parent;       /*!< Video element parent */
-    esp_video_codec_type_t   dst_codec;    /*!< Video encoder destination codec */
-    bool                     venc_bypass;  /*!< Whether video encoder is bypassed or not */
-    uint32_t                 codec_cc;     /*!< FourCC used to find encoder if set */
-    esp_video_enc_handle_t   enc_handle;   /*!< Video encoder handle */
-    venc_extra_set_t         extra_set;    /*!< Video encoder extra setting */
-} venc_t;
+    // Frame capture task
+    TaskHandle_t capture_task_handle = nullptr;
+    volatile bool capture_running = false;
+}
 
-// video_enc_t from esp_video_enc.c - wrapper around codec-specific impl
-typedef struct {
-    const void *ops;                        // esp_video_enc_ops_t*
-    esp_video_enc_handle_t enc_handle;      // Points to hw_h264_t
-} video_enc_t;
-
-// hw_h264_t from esp_video_enc_h264.c - actual H.264 encoder context
-typedef struct {
-    esp_h264_enc_handle_t enc_handle;       // H.264 encoder handle
-    esp_h264_enc_param_handle_t param_handle;
-    // rest of fields not needed
-} hw_h264_t;
-// --- HACK: Private struct from capture_video_v4l2_src.c ---
-// Needed to access FD for V4L2 controls
-#define MAX_SUPPORT_FORMATS_NUM (4)
-typedef struct {
-    esp_capture_video_src_if_t  base;
-    char                        dev_name[16];
-    uint8_t                     buf_count;
-    esp_capture_format_id_t     support_formats[MAX_SUPPORT_FORMATS_NUM];
-    uint8_t                     format_count;
-    int                         fd;
-} v4l2_src_hack_t;// --------------------------------------------------------------------------
-
-static const char *TAG = "RTSP_CAM";
-
-// I2C bus handle for camera SCCB
-static i2c_master_bus_handle_t i2c_bus_handle = NULL;
-
-// Capture system handles
-static esp_capture_handle_t capture_handle = NULL;
-static esp_capture_video_src_if_t *video_src = NULL;
-static esp_capture_sink_handle_t capture_sink = NULL;
-static rtsp_server_handle_t rtsp_server = NULL;
-
-// Frame capture task
-static TaskHandle_t capture_task_handle = NULL;
-static volatile bool capture_running = false;
-
-// Forward declaration for encoder settings callback
+// Forward declarations
 static void on_settings_change(const camera_settings_t *settings);
-int get_camera_fd(void);
+
+/**
+ * @brief Get camera file descriptor for V4L2 controls
+ */
+int get_camera_fd()
+{
+    if (video_src) {
+        auto *src = reinterpret_cast<v4l2_src_hack_t *>(video_src);
+        return src->fd;
+    }
+    return -1;
+}
 
 /**
  * @brief Create video source for MIPI camera on ESP32-P4
  */
-static esp_capture_video_src_if_t *create_video_source(void)
+static esp_capture_video_src_if_t *create_video_source()
 {
     camera_cfg_t cam_pin_cfg = {};
     int ret = get_camera_cfg(&cam_pin_cfg);
     if (ret != 0) {
         ESP_LOGE(TAG, "Failed to get camera config");
-        return NULL;
+        return nullptr;
     }
 
     if (cam_pin_cfg.type != CAMERA_TYPE_MIPI) {
         ESP_LOGE(TAG, "Only MIPI camera supported on ESP32-P4");
-        return NULL;
+        return nullptr;
     }
 
     // Initialize V4L2/camera subsystem
-    esp_video_init_csi_config_t csi_config = {0};
-    esp_video_init_config_t cam_config = {0};
+    esp_video_init_csi_config_t csi_config = {};
+    esp_video_init_config_t cam_config = {};
 
     csi_config.sccb_config.i2c_handle = i2c_bus_handle;
     csi_config.sccb_config.freq = 100000;
-    csi_config.reset_pin = cam_pin_cfg.reset;
-    csi_config.pwdn_pin = cam_pin_cfg.pwr;
+    csi_config.reset_pin = static_cast<gpio_num_t>(cam_pin_cfg.reset);
+    csi_config.pwdn_pin = static_cast<gpio_num_t>(cam_pin_cfg.pwr);
     cam_config.csi = &csi_config;
 
     ret = esp_video_init(&cam_config);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Camera init failed with error 0x%x", ret);
-        return NULL;
+        return nullptr;
     }
 
     // Create V4L2 video source
@@ -166,25 +129,22 @@ static void capture_task(void *pvParameters)
     
     ESP_LOGI(TAG, "Capture task started");
 
-    // --- Motion Vector Setup (DISABLED - causes pipeline issues) ---
-    // MV requires tight integration with encoder pipeline timing
-    // TODO: Implement proper MV handling with pre-allocated aligned buffers
-    esp_h264_enc_param_hw_handle_t h264_hw_handle = NULL;
-    uint8_t *mv_buf = NULL;
+    // --- Motion Vector Setup ---
+    esp_h264_enc_param_hw_handle_t h264_hw_handle = nullptr;
+    uint8_t *mv_buf = nullptr;
     size_t mv_buf_size = 0;
     bool last_motion_state = false;
     
-#if 0  // Motion Vector code disabled for now
-    esp_gmf_element_handle_t venc_hd = NULL;
+    esp_gmf_element_handle_t venc_hd = nullptr;
     esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
     
     if (venc_hd) {
-        venc_t *venc = (venc_t *)venc_hd;
+        auto *venc = reinterpret_cast<venc_t *>(venc_hd);
         if (venc->enc_handle) {
             // venc->enc_handle is video_enc_t* (wrapper)
-            video_enc_t *video_enc = (video_enc_t *)venc->enc_handle;
+            auto *video_enc = reinterpret_cast<video_enc_t *>(venc->enc_handle);
             // video_enc->enc_handle is hw_h264_t* (codec-specific)
-            hw_h264_t *hw_h264 = (hw_h264_t *)video_enc->enc_handle;
+            auto *hw_h264 = reinterpret_cast<hw_h264_t *>(video_enc->enc_handle);
             
             if (hw_h264 && hw_h264->enc_handle) {
                 // Use official API to get param handle from H.264 enc_handle
@@ -202,7 +162,7 @@ static void capture_task(void *pvParameters)
                         ESP_LOGI(TAG, "Motion Vectors Enabled!");
                     } else {
                         ESP_LOGE(TAG, "Failed to enable Motion Vectors: %d", ret);
-                        h264_hw_handle = NULL;
+                        h264_hw_handle = nullptr;
                     }
                 } else {
                     ESP_LOGE(TAG, "Failed to get H.264 param handle: %d", h264_ret);
@@ -214,27 +174,23 @@ static void capture_task(void *pvParameters)
     mv_buf_size = (VIDEO_WIDTH / 16) * (VIDEO_HEIGHT / 16) * sizeof(esp_h264_enc_mv_data_t);
     // Align to cache line size (64 bytes)
     mv_buf_size = (mv_buf_size + 63) & ~63;
-    mv_buf = heap_caps_aligned_alloc(64, mv_buf_size, MALLOC_CAP_SPIRAM);
+    mv_buf = static_cast<uint8_t *>(heap_caps_aligned_alloc(64, mv_buf_size, MALLOC_CAP_SPIRAM));
     if (!mv_buf) {
         ESP_LOGE(TAG, "Failed to allocate MV buffer");
     }
-#endif  // Motion Vector code disabled
-    // ---------------------------
 
     uint32_t frame_count = 0;
-    uint32_t last_log_time = 0;
     uint32_t start_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
     
     while (capture_running) {
         // --- Set MV Packet for NEXT frame ---
         if (h264_hw_handle && mv_buf) {
             esp_h264_enc_mvm_pkt_t mv_pkt = {
-                .data = (esp_h264_enc_mv_data_t *)mv_buf,
+                .data = reinterpret_cast<esp_h264_enc_mv_data_t *>(mv_buf),
                 .len = mv_buf_size,
             };
             esp_h264_enc_hw_set_mv_pkt(h264_hw_handle, mv_pkt);
         }
-        // ------------------------------------
 
         // Acquire frame (blocking with timeout)
         esp_capture_err_t ret = esp_capture_sink_acquire_frame(capture_sink, &frame, false);
@@ -249,15 +205,18 @@ static void capture_task(void *pvParameters)
 
                 // --- Process MV Data ---
                 if (h264_hw_handle && mv_buf) {
-                    uint32_t mv_len = 0;
-                    esp_h264_enc_hw_get_mv_data_len(h264_hw_handle, &mv_len);
-                    if (mv_len > 0) {
+                    uint32_t mv_count = 0;  // Number of MV elements, NOT bytes!
+                    esp_h264_enc_hw_get_mv_data_len(h264_hw_handle, &mv_count);
+                    if (mv_count > 0) {
+                        // Sync cache before reading DMA-filled buffer
+                        esp_cache_msync(mv_buf, mv_count * sizeof(esp_h264_enc_mv_data_t), 
+                                       ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+                        
                         // Check for motion
                         int motion_count = 0;
-                        esp_h264_enc_mv_data_t *mvs = (esp_h264_enc_mv_data_t *)mv_buf;
-                        int mb_count = mv_len / sizeof(esp_h264_enc_mv_data_t);
+                        auto *mvs = reinterpret_cast<esp_h264_enc_mv_data_t *>(mv_buf);
                         
-                        for (int i = 0; i < mb_count; i++) {
+                        for (uint32_t i = 0; i < mv_count; i++) {
                             // Simple threshold: if MV is large enough
                             if (abs(mvs[i].mv_x) > 4 || abs(mvs[i].mv_y) > 4) {
                                 motion_count++;
@@ -276,17 +235,6 @@ static void capture_task(void *pvParameters)
                         }
                     }
                 }
-                // -----------------------
-                
-                // Log frame info every 5 seconds or first 10 frames
-                // if (now - last_log_time > 5000 || frame_count <= 10) {
-                //     // Dump first 32 bytes to see format
-                //     ESP_LOGI(TAG, "Frame #%lu: size=%d, ts=%lu ms", 
-                //              frame_count, frame.size, timestamp_ms);
-                //     ESP_LOG_BUFFER_HEX_LEVEL(TAG, frame.data, 
-                //              frame.size > 32 ? 32 : frame.size, ESP_LOG_INFO);
-                //     last_log_time = now;
-                // }
                 
                 // Feed H.264 frame to RTSP server
                 // Check if frame starts with NAL unit (keyframe detection)
@@ -311,31 +259,19 @@ static void capture_task(void *pvParameters)
     }
     
     ESP_LOGI(TAG, "Capture task stopped");
-    vTaskDelete(NULL);
+    vTaskDelete(nullptr);
 }
 
-
-
-int get_camera_fd(void)
+/**
+ * @brief Main application entry point
+ */
+extern "C" void app_main()
 {
-    if (video_src) {
-        v4l2_src_hack_t *src = (v4l2_src_hack_t *)video_src;
-        return src->fd;
-    }
-    return -1;
-}
-
-void app_main(void)
-{
+    esp_err_t ret;
     ESP_LOGI(TAG, "Starting RTSP Camera Application");
 
-    // Initialize NVS
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    // Create AppParams object (initializes NVS)
+    AppParams app_params;
 
     // Initialize Network
     ESP_ERROR_CHECK(network_init());
@@ -347,14 +283,13 @@ void app_main(void)
     // Initialize I2C for camera SCCB (codec_init won't do it with DUMMY codec)
     codec_i2c_pin_t i2c_pin;
     if (get_i2c_pin(0, &i2c_pin) == 0 && i2c_pin.sda >= 0 && i2c_pin.scl >= 0) {
-        i2c_master_bus_config_t i2c_bus_config = {
-            .clk_source = I2C_CLK_SRC_DEFAULT,
-            .i2c_port = 0,
-            .scl_io_num = i2c_pin.scl,
-            .sda_io_num = i2c_pin.sda,
-            .glitch_ignore_cnt = 7,
-            .flags.enable_internal_pullup = true,
-        };
+        i2c_master_bus_config_t i2c_bus_config = {};
+        i2c_bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
+        i2c_bus_config.i2c_port = 0;
+        i2c_bus_config.scl_io_num = static_cast<gpio_num_t>(i2c_pin.scl);
+        i2c_bus_config.sda_io_num = static_cast<gpio_num_t>(i2c_pin.sda);
+        i2c_bus_config.glitch_ignore_cnt = 7;
+        i2c_bus_config.flags.enable_internal_pullup = true;
         ret = i2c_new_master_bus(&i2c_bus_config, &i2c_bus_handle);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to initialize I2C bus: %d", ret);
@@ -376,25 +311,26 @@ void app_main(void)
     // Create video source for camera
     ESP_LOGI(TAG, "Creating video source...");
     video_src = create_video_source();
-    if (video_src == NULL) {
+    if (video_src == nullptr) {
         ESP_LOGE(TAG, "Failed to create video source");
         return;
     }
 
     // Wstępne ustawienia kamery przed uruchomieniem pipeline
     vTaskDelay(pdMS_TO_TICKS(50));
-    setup_camera_controls();
+    setup_camera_controls();  // Podstawowa inicjalizacja OV5647
+    app_params.apply_to_camera();
 
     // Create capture system (video only, no audio for RTSP streaming)
     ESP_LOGI(TAG, "Setting up capture system...");
     esp_capture_cfg_t capture_cfg = {
         .sync_mode = ESP_CAPTURE_SYNC_MODE_NONE,
-        .audio_src = NULL,  // No audio for now
+        .audio_src = nullptr,
         .video_src = video_src,
     };
     
     esp_capture_err_t cap_ret = esp_capture_open(&capture_cfg, &capture_handle);
-    if (cap_ret != ESP_CAPTURE_ERR_OK || capture_handle == NULL) {
+    if (cap_ret != ESP_CAPTURE_ERR_OK || capture_handle == nullptr) {
         ESP_LOGE(TAG, "Failed to open capture: %d", cap_ret);
         return;
     }
@@ -410,7 +346,7 @@ void app_main(void)
     };
     
     cap_ret = esp_capture_sink_setup(capture_handle, 0, &sink_cfg, &capture_sink);
-    if (cap_ret != ESP_CAPTURE_ERR_OK || capture_sink == NULL) {
+    if (cap_ret != ESP_CAPTURE_ERR_OK || capture_sink == nullptr) {
         ESP_LOGE(TAG, "Failed to setup capture sink: %d", cap_ret);
         return;
     }
@@ -421,7 +357,7 @@ void app_main(void)
     ESP_LOGI(TAG, "Video bitrate set to 6 Mbps");
 
     // Set GOP to 25 (1 second) to reduce artifact persistence
-    esp_gmf_element_handle_t venc_hd = NULL;
+    esp_gmf_element_handle_t venc_hd = nullptr;
     esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
     if (venc_hd) {
         esp_gmf_video_enc_set_gop(venc_hd, VIDEO_FPS);
@@ -464,12 +400,13 @@ void app_main(void)
 
     // Ponowna próba ustawień po starcie pipeline (niektóre sterowniki akceptują dopiero po STREAMON)
     vTaskDelay(pdMS_TO_TICKS(100));
-    setup_camera_controls();
+    setup_camera_controls();  // Podstawowa inicjalizacja OV5647
+    app_params.apply_to_camera();
 
     // Start capture task
     capture_running = true;
     // Increase priority to 10 to ensure low latency video processing and sending
-    xTaskCreatePinnedToCore(capture_task, "capture_task", 8192, NULL, 10, &capture_task_handle, 1);
+    xTaskCreatePinnedToCore(capture_task, "capture_task", 8192, nullptr, 10, &capture_task_handle, 1);
 
     ESP_LOGI(TAG, "=================================");
     ESP_LOGI(TAG, "RTSP Camera Ready!");
@@ -481,7 +418,7 @@ void app_main(void)
     // Main monitoring loop
     int last_clients = 0;
     int loop_count = 0;
-    while (1) {
+    while (true) {
         int clients = rtsp_server_get_client_count(rtsp_server);
         if (clients != last_clients) {
             if (clients > 0) {
@@ -510,7 +447,7 @@ static void on_settings_change(const camera_settings_t *settings)
     ESP_LOGI(TAG, "Applying encoder settings: bitrate=%d kbps, GOP=%d, QP=%d-%d",
              settings->bitrate, settings->gop, settings->min_qp, settings->max_qp);
     
-    esp_gmf_element_handle_t venc_hd = NULL;
+    esp_gmf_element_handle_t venc_hd = nullptr;
     esp_capture_sink_get_element_by_tag(capture_sink, ESP_CAPTURE_STREAM_TYPE_VIDEO, "vid_enc", &venc_hd);
     
     if (venc_hd) {
