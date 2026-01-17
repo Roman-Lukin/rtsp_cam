@@ -3,8 +3,13 @@
 #include "esp_capture.h"
 #include "esp_gmf_video_element.h"
 #include "esp_video_enc.h"
-#include "esp_h264_enc_param_hw.h"
 
+// Motion detection types are currently disabled
+// Uncomment when enabling motion detection:
+// #include "esp_h264_enc_param_hw.h"
+// #include "esp_h264_enc_single_hw.h"
+
+#if 0  // Motion detection types - disabled for now
 // --- HACK: Private structs from esp_gmf_video_enc.c and esp_video_enc.c ---
 // Needed to access H.264 HW handle for Motion Vectors
 
@@ -45,6 +50,7 @@ typedef struct {
     esp_h264_enc_param_handle_t param_handle;
     // rest of fields not needed
 } hw_h264_t;
+#endif  // Motion detection types
 
 // --- HACK: Private struct from capture_video_v4l2_src.c ---
 // Needed to access FD for V4L2 controls

@@ -107,7 +107,7 @@ dependencies:
     - esp32c61
     version: 1.7.0
   espressif/esp_capture:
-    component_hash: 2c39fa98bcab46fa8f41954e1a1765260414ba651bf6aa5ec9101af07513c384
+    component_hash: cbca2ae239b6a7365dfd86afe75f321be0c3f3d555e96a3c99ddb564a6f06102
     dependencies:
     - name: espressif/cmake_utilities
       registry_url: https://components.espressif.com
@@ -151,7 +151,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 0.7.8
+    version: 0.7.8~1
   espressif/esp_codec_dev:
     component_hash: 0d9e9bc288156eb55f79338d312e1ebf8c9dfbd5e7d13ef0f20ccb031b4e15cf
     dependencies:
@@ -263,7 +263,7 @@ dependencies:
     - esp32c6
     version: 1.0.0
   espressif/esp_sccb_intf:
-    component_hash: 8345dc8ec72c38716f86bb439394aa3e6ae5b773078365016b009b3dba4549a8
+    component_hash: 44dfa738680ccbc3705ae6940f59be603165f4f7e4d05c3eb5f433705fdc92be
     dependencies:
     - name: idf
       require: private
@@ -271,7 +271,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 0.0.6
+    version: 0.0.7
   espressif/esp_video:
     component_hash: 2239aed49fa4eb1efdf3b0c2b95b05c03fc8b363c101bc2cd70f5e3bcd3c7cc4
     dependencies:
@@ -409,11 +409,11 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.5.1
+    version: 5.5.2
   media_lib_sal:
     dependencies: []
     source:
-      path: /Users/workbook/projects/esp/rtsp_cam/components/media_lib_sal
+      path: C:\MyProgs\ESP32\rtsp_cam\components\media_lib_sal
       type: local
     version: 0.9.0
 direct_dependencies:

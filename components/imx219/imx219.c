@@ -40,12 +40,12 @@ static const char *TAG = "imx219";
 // ISP info for different modes
 // IMX219 uses Bayer RGGB pattern (different from OV5647's GBRG)
 static const esp_cam_sensor_isp_info_t imx219_isp_info[] = {
-    // Mode 0: 1920x1080 @ 30fps
+    // Mode 0: 1640x900 @ 60fps (2x2 binned, SAME timing as working 720p!)
     {
         .isp_v1_info = {
             .version = SENSOR_ISP_INFO_VERSION_DEFAULT,
             .pclk = 182400000,
-            .vts = 1763,
+            .vts = 860,   // SAME as 720p!
             .hts = 3448,
             .bayer_type = ESP_CAM_SENSOR_BAYER_RGGB,
         }
@@ -85,18 +85,18 @@ static const esp_cam_sensor_isp_info_t imx219_isp_info[] = {
 // Format definitions
 static const esp_cam_sensor_format_t imx219_format_info[] = {
     {
-        .name = "MIPI_2lane_24Minput_RAW10_1920x1080_30fps",
+        .name = "MIPI_2lane_24Minput_RAW10_1280x960_60fps",
         .format = ESP_CAM_SENSOR_PIXFORMAT_RAW10,
         .port = ESP_CAM_SENSOR_MIPI_CSI,
         .xclk = 24000000,
-        .width = 1920,
-        .height = 1080,
-        .regs = imx219_mode_1920x1080_30fps,
-        .regs_size = ARRAY_SIZE(imx219_mode_1920x1080_30fps),
-        .fps = 30,
+        .width = 1280,
+        .height = 960,
+        .regs = imx219_mode_1640x1232_30fps,  // Reusing the array name
+        .regs_size = ARRAY_SIZE(imx219_mode_1640x1232_30fps),
+        .fps = 60,  // Same as 720p!
         .isp_info = &imx219_isp_info[0],
         .mipi_info = {
-            .mipi_clk = IMX219_MIPI_CSI_LINE_RATE_1920x1080_30FPS,
+            .mipi_clk = IMX219_MIPI_CSI_LINE_RATE_1280x720_60FPS,  // Same as 720p!
             .lane_num = 2,
             .line_sync_en = false,
         },
@@ -260,9 +260,43 @@ static esp_err_t imx219_set_stream(esp_cam_sensor_device_t *dev, int enable)
     esp_err_t ret = imx219_write(dev->sccb_handle, IMX219_REG_MODE_SELECT, enable ? 0x01 : 0x00);
     ESP_RETURN_ON_FALSE(ret == ESP_OK, ret, TAG, "set stream failed");
     
+    // Verify the write
+    uint8_t mode_val = 0;
+    ret = imx219_read(dev->sccb_handle, IMX219_REG_MODE_SELECT, &mode_val);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "MODE_SELECT register verified: 0x%02X", mode_val);
+    }
+    
+    // Log some key registers for debugging
+    if (enable) {
+        uint8_t hi, lo;
+        imx219_read(dev->sccb_handle, IMX219_REG_X_OUTPUT_SIZE_H, &hi);
+        imx219_read(dev->sccb_handle, IMX219_REG_X_OUTPUT_SIZE_L, &lo);
+        ESP_LOGI(TAG, "Output width: %d", (hi << 8) | lo);
+        
+        imx219_read(dev->sccb_handle, IMX219_REG_Y_OUTPUT_SIZE_H, &hi);
+        imx219_read(dev->sccb_handle, IMX219_REG_Y_OUTPUT_SIZE_L, &lo);
+        ESP_LOGI(TAG, "Output height: %d", (hi << 8) | lo);
+        
+        imx219_read(dev->sccb_handle, IMX219_REG_FRAME_LEN_H, &hi);
+        imx219_read(dev->sccb_handle, IMX219_REG_FRAME_LEN_L, &lo);
+        ESP_LOGI(TAG, "Frame length: %d lines", (hi << 8) | lo);
+        
+        imx219_read(dev->sccb_handle, IMX219_REG_LINE_LEN_H, &hi);
+        imx219_read(dev->sccb_handle, IMX219_REG_LINE_LEN_L, &lo);
+        ESP_LOGI(TAG, "Line length: %d pixels", (hi << 8) | lo);
+        
+        imx219_read(dev->sccb_handle, IMX219_REG_CSI_LANE_MODE, &lo);
+        ESP_LOGI(TAG, "CSI lane mode: %d (1=2-lane, 3=4-lane)", lo);
+        
+        imx219_read(dev->sccb_handle, IMX219_REG_CSI_DATA_FORMAT_H, &hi);
+        imx219_read(dev->sccb_handle, IMX219_REG_CSI_DATA_FORMAT_L, &lo);
+        ESP_LOGI(TAG, "CSI data format: 0x%02X%02X", hi, lo);
+    }
+    
     dev->stream_status = enable;
     ESP_LOGI(TAG, "Stream %s", enable ? "STARTED" : "STOPPED");
-    return ret;
+    return ESP_OK;
 }
 
 // Exposure control
@@ -442,6 +476,38 @@ static esp_err_t imx219_set_format(esp_cam_sensor_device_t *dev, const esp_cam_s
         ESP_LOGE(TAG, "Failed to write mode registers");
         return ret;
     }
+    
+    // =========================================================================
+    // CRITICAL: LP-11 initialization sequence
+    // IMX219 doesn't enter LP-11 state on MIPI lines until streaming is first
+    // started and then stopped. Without this, the MIPI CSI receiver will not
+    // detect any frames!
+    // Reference: Linux kernel imx219 driver - imx219_probe()
+    // =========================================================================
+    ESP_LOGI(TAG, "Executing LP-11 initialization sequence...");
+    
+    // Start streaming briefly
+    ret = imx219_write(dev->sccb_handle, IMX219_REG_MODE_SELECT, 0x01);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "LP-11 init: failed to start streaming");
+        return ret;
+    }
+    
+    // Wait for sensor to enter streaming mode (min 100us per datasheet)
+    delay_ms(1);
+    
+    // Stop streaming - this puts MIPI lines into LP-11 state
+    ret = imx219_write(dev->sccb_handle, IMX219_REG_MODE_SELECT, 0x00);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "LP-11 init: failed to stop streaming");
+        return ret;
+    }
+    
+    // Wait for sensor to stabilize in standby
+    delay_ms(1);
+    
+    ESP_LOGI(TAG, "LP-11 initialization complete - MIPI lines ready");
+    // =========================================================================
     
     dev->cur_format = format;
     ESP_LOGI(TAG, "Set format: %s", format->name);

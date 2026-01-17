@@ -13,10 +13,10 @@ extern "C" {
 #endif
 
 #if CONFIG_IDF_TARGET_ESP32P4
-// Using RAW10 1920x1080 mode (camera runs at 30fps)
-#define VIDEO_WIDTH  1920
-#define VIDEO_HEIGHT 1080
-#define VIDEO_FPS    24
+// Testing 1280x960 (4:3, 16-byte aligned) - same sensor timing as 720p
+#define VIDEO_WIDTH  1280
+#define VIDEO_HEIGHT 960
+#define VIDEO_FPS    30
 #else
 #define VIDEO_WIDTH  320
 #define VIDEO_HEIGHT 240

@@ -37,7 +37,7 @@
 #include "app_params.h"
 #include "rtsp_server.h"
 #include "http_server.h"
-#include "ov5647_helper.h"
+#include "camera_interface.h"
 #include "main_types.h"
 
 namespace {
@@ -55,14 +55,6 @@ namespace {
     // Frame capture task
     TaskHandle_t capture_task_handle = nullptr;
     volatile bool capture_running = false;
-    
-    // Detected sensor type
-    enum class SensorType {
-        NONE,
-        OV5647,
-        IMX219
-    };
-    SensorType detected_sensor = SensorType::NONE;
 }
 
 // Forward declarations
@@ -160,75 +152,46 @@ static void enable_camera_power(bool for_imx219)
 }
 
 /**
- * @brief Scan I2C bus for devices and detect sensor type
- * @return SensorType (IMX219, OV5647, or NONE)
+ * @brief Scan I2C bus for devices and initialize camera interface
+ * @return true if camera was found and initialized
  */
-static SensorType i2c_scan_and_detect(i2c_master_bus_handle_t bus_handle)
+static bool i2c_scan_and_init_camera(i2c_master_bus_handle_t bus_handle)
 {
     ESP_LOGW(TAG, "========================================");
-    ESP_LOGW(TAG, "  I2C BUS SCAN - Camera Detection");
+    ESP_LOGW(TAG, "  Camera Detection & Initialization");
     ESP_LOGW(TAG, "========================================");
     
     // First enable camera power for IMX219
     enable_camera_power(true);  // true = IMX219 mode (HIGH)
     
-    // IMX219 may need more time to fully initialize after power-on
+    // Sensor needs time to initialize after power-on
     ESP_LOGW(TAG, "Waiting 500ms for sensor to initialize...");
     vTaskDelay(pdMS_TO_TICKS(500));
     
-    // Check for known sensors
-    SensorType result = SensorType::NONE;
-    int found_count = 0;
+    // Use camera interface auto-detection
+    esp_err_t ret = camera_interface_init(bus_handle);
     
-    // Check IMX219 (0x10)
-    if (i2c_master_probe(bus_handle, 0x10, 50) == ESP_OK) {
-        ESP_LOGW(TAG, "  >> FOUND: 0x10 - IMX219");
-        result = SensorType::IMX219;
-        found_count++;
-    }
-    
-    // Check IMX219 alt (0x1A)
-    if (i2c_master_probe(bus_handle, 0x1A, 50) == ESP_OK) {
-        ESP_LOGW(TAG, "  >> FOUND: 0x1A - IMX219 (alt addr)");
-        if (result == SensorType::NONE) result = SensorType::IMX219;
-        found_count++;
-    }
-    
-    // Check OV5647/OV5640 (0x36)
-    if (i2c_master_probe(bus_handle, 0x36, 50) == ESP_OK) {
-        ESP_LOGW(TAG, "  >> FOUND: 0x36 - OV5647/OV5640");
-        if (result == SensorType::NONE) result = SensorType::OV5647;
-        found_count++;
-    }
-    
-    // Full scan for other devices
-    for (uint8_t addr = 0x03; addr <= 0x77; addr++) {
-        if (addr == 0x10 || addr == 0x1A || addr == 0x36) continue;
-        
-        if (i2c_master_probe(bus_handle, addr, 50) == ESP_OK) {
-            ESP_LOGW(TAG, "  >> FOUND: 0x%02X - Unknown device", addr);
-            found_count++;
-        }
-    }
-    
-    if (found_count == 0) {
-        ESP_LOGE(TAG, "  NO DEVICES FOUND ON I2C BUS!");
-        ESP_LOGE(TAG, "  Check: power, reset pin, cable connection");
+    if (ret == ESP_OK && g_camera) {
+        const auto& caps = g_camera->getCapabilities();
+        ESP_LOGW(TAG, "  >>> Camera detected: %s <<<", caps.name);
+        ESP_LOGW(TAG, "  I2C addr: 0x%02X, Chip ID: 0x%04X", caps.i2c_addr, caps.chip_id);
+        ESP_LOGW(TAG, "  Max resolution: %ux%u", caps.max_width, caps.max_height);
+        ESP_LOGW(TAG, "  Exposure range: %u-%u", caps.exposure_min, caps.exposure_max);
+        ESP_LOGW(TAG, "  Analog gain range: %u-%u", caps.analog_gain_min, caps.analog_gain_max);
+        ESP_LOGW(TAG, "  Features: AEC=%d, AGC=%d, AWB=%d", 
+                 caps.has_auto_exposure, caps.has_auto_gain, caps.has_auto_wb);
     } else {
-        ESP_LOGW(TAG, "  Total devices found: %d", found_count);
-        const char *sensor_name = "NONE";
-        if (result == SensorType::IMX219) sensor_name = "IMX219";
-        else if (result == SensorType::OV5647) sensor_name = "OV5647";
-        ESP_LOGW(TAG, "  >>> Primary sensor: %s <<<", sensor_name);
+        ESP_LOGE(TAG, "  NO SUPPORTED CAMERA FOUND!");
+        ESP_LOGE(TAG, "  Check: power, reset pin, cable connection");
     }
     
     ESP_LOGW(TAG, "========================================");
     
-    // Pause for 3 seconds to read the results
-    ESP_LOGW(TAG, "Pausing 3 seconds before continuing...");
-    vTaskDelay(pdMS_TO_TICKS(3000));
+    // Pause for 2 seconds to read the results
+    ESP_LOGW(TAG, "Pausing 2 seconds before continuing...");
+    vTaskDelay(pdMS_TO_TICKS(2000));
     
-    return result;
+    return (g_camera != nullptr);
 }
 
 /**
@@ -274,9 +237,12 @@ static esp_capture_video_src_if_t *create_video_source()
     csi_config.reset_pin = (cam_pin_cfg.reset >= 0) ? 
                            static_cast<gpio_num_t>(cam_pin_cfg.reset) : GPIO_NUM_NC;
     
+    // Check if camera is IMX219 to handle power pin differently
+    bool is_imx219 = (g_camera && strcmp(g_camera->getCapabilities().name, "IMX219") == 0);
+    
     // For IMX219: pwdn_pin should NOT be used by esp_video (we control it ourselves)
     // Pass -1 to prevent esp_video from toggling our power pin
-    if (detected_sensor == SensorType::IMX219) {
+    if (is_imx219) {
         csi_config.pwdn_pin = GPIO_NUM_NC;  // Don't let esp_video control power
         ESP_LOGW(TAG, "IMX219 mode: pwdn_pin disabled (we control GPIO48 ourselves)");
     } else {
@@ -414,17 +380,9 @@ extern "C" void app_main()
         }
         ESP_LOGI(TAG, "I2C initialized (SDA:%d, SCL:%d)", i2c_pin.sda, i2c_pin.scl);
         
-        // Scan I2C bus and detect sensor type
-        detected_sensor = i2c_scan_and_detect(i2c_bus_handle);
-        
-        // Initialize sensor-specific helper (only for OV5647)
-        if (detected_sensor == SensorType::OV5647) {
-            ov5647_helper_init(i2c_bus_handle);
-            ESP_LOGI(TAG, "OV5647 helper initialized");
-        } else if (detected_sensor == SensorType::IMX219) {
-            ESP_LOGI(TAG, "IMX219 detected - no helper needed");
-        } else {
-            ESP_LOGW(TAG, "No known sensor detected!");
+        // Scan I2C bus and initialize camera interface
+        if (!i2c_scan_and_init_camera(i2c_bus_handle)) {
+            ESP_LOGW(TAG, "No camera detected - continuing anyway");
         }
     } else {
         ESP_LOGE(TAG, "Invalid I2C pin configuration");
@@ -443,12 +401,8 @@ extern "C" void app_main()
         return;
     }
 
-    // Wstępne ustawienia kamery przed uruchomieniem pipeline
-    vTaskDelay(pdMS_TO_TICKS(50));
-    if (detected_sensor == SensorType::OV5647) {
-        setup_camera_controls();  // Podstawowa inicjalizacja OV5647
-        app_params.apply_to_camera();
-    }
+    // NOTE: Don't apply camera settings here - let esp_video driver configure the sensor first
+    // Settings will be applied after streaming starts
 
     // Create capture system (video only, no audio for RTSP streaming)
     ESP_LOGI(TAG, "Setting up capture system...");
@@ -534,11 +488,8 @@ extern "C" void app_main()
     ESP_LOGI(TAG, "Waiting 500ms for pipeline to stabilize...");
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    // Ponowna próba ustawień po starcie pipeline (niektóre sterowniki akceptują dopiero po STREAMON)
-    if (detected_sensor == SensorType::OV5647) {
-        setup_camera_controls();  // Podstawowa inicjalizacja OV5647
-        app_params.apply_to_camera();
-    }
+    // Re-apply camera settings after pipeline start (some settings need STREAMON first)
+    app_params.apply_to_camera();
 
     // Start capture task
     capture_running = true;

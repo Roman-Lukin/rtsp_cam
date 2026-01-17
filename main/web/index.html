@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RTSP Camera Settings</title>
+    <title>RTSP Camera Settings - IMX219</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { 
@@ -66,6 +66,10 @@
             background: rgba(0,212,255,0.1); padding: 15px; border-radius: 8px;
             margin-bottom: 20px; text-align: center; 
         }
+        .sensor-badge {
+            display: inline-block; background: #00d4ff; color: #000;
+            padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em;
+        }
         .color-preview {
             width: 100%; height: 30px; border-radius: 8px; margin-top: 10px;
             border: 1px solid rgba(255,255,255,0.2);
@@ -77,30 +81,31 @@
         <h1>📷 RTSP Camera Settings</h1>
         
         <div class="info">
+            <span class="sensor-badge">IMX219</span> |
             <strong>Stream:</strong> rtsp://<span id="streamIP">--</span>:554/stream | 
             <strong>Resolution:</strong> <span id="resolution">--</span>
         </div>
         
         <form id="settingsForm">
             <div class="card">
-                <h2>🔆 Exposure</h2>
+                <h2>🔆 Exposure (IMX219)</h2>
                 <div class="form-group">
-                    <label><input type="checkbox" id="autoExposure" onchange="toggleExposure()"> Auto Exposure</label>
+                    <label><input type="checkbox" id="autoExposure" onchange="toggleExposure()"> Auto Exposure (ISP)</label>
                 </div>
                 <div id="manualExposure">
                     <div class="form-group">
-                        <label>Exposure Time <span class="value-display" id="expVal">200</span></label>
-                        <input type="range" id="exposure" min="1" max="1000" value="200" oninput="updateVal('expVal', this.value)">
+                        <label>Exposure Time (lines) <span class="value-display" id="expVal">512</span></label>
+                        <input type="range" id="exposure" min="4" max="1760" value="512" oninput="updateVal('expVal', this.value)">
                     </div>
                     <div class="form-group">
-                        <label>Gain <span class="value-display" id="gainVal">16</span></label>
-                        <input type="range" id="gain" min="0" max="255" value="16" oninput="updateVal('gainVal', this.value)">
+                        <label>Analog Gain (0-232) <span class="value-display" id="gainVal">64</span></label>
+                        <input type="range" id="gain" min="0" max="232" value="64" oninput="updateVal('gainVal', this.value)">
                     </div>
                 </div>
             </div>
             
             <div class="card">
-                <h2>🎨 White Balance</h2>
+                <h2>🎨 White Balance (ISP)</h2>
                 <div class="form-group">
                     <label><input type="checkbox" id="autoWB" checked onchange="toggleWB()"> Auto White Balance</label>
                 </div>
@@ -124,13 +129,15 @@
             </div>
             
             <div class="card">
-                <h2>🧪 Test Pattern</h2>
+                <h2>🧪 Test Pattern (IMX219)</h2>
                 <div class="form-group">
                     <label>Pattern Mode</label>
                     <select id="testPattern">
                         <option value="0">Disabled (Live Camera)</option>
-                        <option value="128">Color Bars</option>
-                        <option value="130">Color Squares</option>
+                        <option value="1">Solid Color</option>
+                        <option value="2">Color Bars (8 colors)</option>
+                        <option value="3">Grey Color Bars</option>
+                        <option value="4">PN9 (pseudo-random)</option>
                     </select>
                 </div>
             </div>
@@ -161,12 +168,12 @@
             <div class="card">
                 <h2>🎬 H.264 Encoder</h2>
                 <div class="form-group">
-                    <label>Bitrate (kbps) <span class="value-display" id="bitrateVal">6000</span></label>
-                    <input type="range" id="bitrate" min="1000" max="15000" step="500" value="6000" oninput="updateVal('bitrateVal', this.value)">
+                    <label>Bitrate (kbps) <span class="value-display" id="bitrateVal">4000</span></label>
+                    <input type="range" id="bitrate" min="500" max="10000" step="250" value="4000" oninput="updateVal('bitrateVal', this.value)">
                 </div>
                 <div class="form-group">
-                    <label>GOP Size <span class="value-display" id="gopVal">25</span></label>
-                    <input type="range" id="gop" min="1" max="120" value="25" oninput="updateVal('gopVal', this.value)">
+                    <label>GOP Size (I-frame interval) <span class="value-display" id="gopVal">30</span></label>
+                    <input type="range" id="gop" min="1" max="120" value="30" oninput="updateVal('gopVal', this.value)">
                 </div>
                 <div class="row">
                     <div class="form-group">
@@ -174,8 +181,8 @@
                         <input type="range" id="minQp" min="0" max="51" value="20" oninput="updateVal('minQpVal', this.value)">
                     </div>
                     <div class="form-group">
-                        <label>Max QP <span class="value-display" id="maxQpVal">35</span></label>
-                        <input type="range" id="maxQp" min="0" max="51" value="35" oninput="updateVal('maxQpVal', this.value)">
+                        <label>Max QP <span class="value-display" id="maxQpVal">40</span></label>
+                        <input type="range" id="maxQp" min="0" max="51" value="40" oninput="updateVal('maxQpVal', this.value)">
                     </div>
                 </div>
             </div>

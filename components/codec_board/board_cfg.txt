@@ -136,4 +136,4 @@ Board: ESP32_P4_RTSP_CAM
 i2c: {sda: 7, scl: 8}
 i2s: {mclk: -1, bclk: -1, ws: -1, dout: -1, din: -1}
 in: {codec: DUMMY}
-camera: {type: mipi}
+camera: {type: mipi, pwr: 48}

@@ -59,6 +59,18 @@ extern "C" {
 #define IMX219_REG_CSI_DATA_FORMAT_L    0x018D
 #define IMX219_REG_CSI_LANE_MODE        0x0114
 
+// Additional timing registers (from Linux driver)
+#define IMX219_REG_DPHY_CTRL        0x0128  // DPHY timing control
+#define IMX219_REG_EXCK_FREQ_H      0x012A  // External clock frequency
+#define IMX219_REG_EXCK_FREQ_L      0x012B
+#define IMX219_REG_X_ODD_INC_A      0x0170  // X increment
+#define IMX219_REG_Y_ODD_INC_A      0x0171  // Y increment
+#define IMX219_REG_OPPXCK_DIV       0x0309  // Output pixel clock divider
+
+// DPHY control values
+#define IMX219_DPHY_CTRL_TIMING_AUTO    0
+#define IMX219_DPHY_CTRL_TIMING_MANUAL  1
+
 #ifdef __cplusplus
 }
 #endif

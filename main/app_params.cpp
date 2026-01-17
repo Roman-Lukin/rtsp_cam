@@ -2,7 +2,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
-#include "ov5647_helper.h"
+#include "camera_interface.h"
 
 #include <cerrno>
 #include <fcntl.h>
@@ -15,29 +15,32 @@
 namespace {
     constexpr const char* TAG = "APP_PARAMS";
     constexpr const char* NVS_NAMESPACE = "cam_settings";
+    constexpr uint32_t SETTINGS_VERSION = 3;  // Increment to reset settings on update
 }
 
 // Global instance pointer
 AppParams* g_app_params = nullptr;
 
-// Default settings
+// Default settings for IMX219 sensor
+// Exposure: 4-1760 (VTS - 4), where VTS=1764 for 1280x960
+// Analog Gain: 0-232
 CameraSettings app_params_default_settings(void) {
     CameraSettings s = {};
-    s.auto_exposure = true;
-    s.exposure_value = 200;
-    s.gain = 16;
+    s.auto_exposure = false;     // IMX219 has no built-in AEC, use manual exposure
+    s.exposure_value = 1024;     // IMX219: higher exposure for brighter image (4-1760 lines)
+    s.gain = 128;                // IMX219: analog gain ~2x (0-232)
     s.auto_white_balance = true;
     s.wb_red_gain = 0x400;
     s.wb_green_gain = 0x400;
     s.wb_blue_gain = 0x400;
-    s.test_pattern = 0;
+    s.test_pattern = 0;          // IMX219: 0=disabled, 1=solid, 2=color bars, 3=grey, 4=PN9
     s.denoise_enable = true;
     s.denoise_level = 10;
-    s.power_line_freq = 1;
-    s.bitrate = 6000;
-    s.gop = 25;
+    s.power_line_freq = 1;       // 50Hz (Europe)
+    s.bitrate = 4000;            // kbps for 1280x960
+    s.gop = 30;                  // GOP = 1 second at 30fps
     s.min_qp = 20;
-    s.max_qp = 35;
+    s.max_qp = 40;
     return s;
 }
 
@@ -66,7 +69,7 @@ void AppParams::init_nvs() {
 
 void AppParams::load_settings() {
     nvs_handle_t handle;
-    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    esp_err_t ret = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     
     if (ret == ESP_ERR_NVS_NOT_FOUND) {
         ESP_LOGI(TAG, "No saved settings found, using defaults");
@@ -75,6 +78,18 @@ void AppParams::load_settings() {
     
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open NVS: %d", ret);
+        return;
+    }
+    
+    // Check settings version - reset to defaults if version changed
+    uint32_t stored_version = 0;
+    if (nvs_get_u32(handle, "version", &stored_version) != ESP_OK || stored_version != SETTINGS_VERSION) {
+        ESP_LOGW(TAG, "Settings version changed (%lu -> %lu), resetting to defaults", 
+                 stored_version, SETTINGS_VERSION);
+        nvs_erase_all(handle);
+        nvs_set_u32(handle, "version", SETTINGS_VERSION);
+        nvs_commit(handle);
+        nvs_close(handle);
         return;
     }
     
@@ -130,6 +145,9 @@ esp_err_t AppParams::save_settings() {
         return ret;
     }
     
+    // Save settings version
+    nvs_set_u32(handle, "version", SETTINGS_VERSION);
+    
     // Save all settings
     nvs_set_u8(handle, "auto_exp", settings_.auto_exposure ? 1 : 0);
     nvs_set_i32(handle, "exp_val", settings_.exposure_value);
@@ -167,19 +185,53 @@ esp_err_t AppParams::save_settings() {
 void AppParams::apply_to_camera() {
     ESP_LOGI(TAG, "Applying camera settings...");
     
-    // ===== OV5647 Sensor Settings (via I2C) =====
-    
-    // Auto Exposure / Auto Gain
-    ov5647_set_auto_exposure(settings_.auto_exposure);
-    
-    // Manual Exposure and Gain (only if auto is disabled)
-    if (!settings_.auto_exposure) {
-        ov5647_set_exposure(settings_.exposure_value);
-        ov5647_set_gain(settings_.gain);
+    // ===== Sensor Settings via V4L2 (through /dev/video0) =====
+    // esp_video requires VIDIOC_S_EXT_CTRLS instead of VIDIOC_S_CTRL
+    int cam_fd = open("/dev/video0", O_RDWR);
+    if (cam_fd >= 0) {
+        // Set exposure (V4L2_CID_EXPOSURE)
+        // IMX219: exposure in lines, range 4 to VTS-4 (approx 1760 for 1280x960)
+        if (!settings_.auto_exposure) {
+            struct v4l2_ext_controls controls = {};
+            struct v4l2_ext_control control[1] = {};
+            
+            // Set exposure using CAMERA_CLASS as esp_video does
+            controls.ctrl_class = V4L2_CID_CAMERA_CLASS;
+            controls.count = 1;
+            controls.controls = control;
+            control[0].id = V4L2_CID_EXPOSURE;
+            control[0].value = settings_.exposure_value;
+            
+            int ret = ioctl(cam_fd, VIDIOC_S_EXT_CTRLS, &controls);
+            if (ret == 0) {
+                ESP_LOGI(TAG, "Exposure set to %d lines", settings_.exposure_value);
+            } else {
+                ESP_LOGW(TAG, "Failed to set exposure: %d (errno=%d)", ret, errno);
+            }
+            
+            // Set gain (V4L2_CID_GAIN) using USER_CLASS as esp_video does
+            // IMX219: analog gain 0-232, where real_gain = 256/(256-val)
+            controls.ctrl_class = V4L2_CID_USER_CLASS;
+            controls.count = 1;
+            controls.controls = control;
+            control[0].id = V4L2_CID_GAIN;
+            control[0].value = settings_.gain;
+            
+            ret = ioctl(cam_fd, VIDIOC_S_EXT_CTRLS, &controls);
+            if (ret == 0) {
+                float real_gain = 256.0f / (256.0f - settings_.gain);
+                ESP_LOGI(TAG, "Gain set to %d (%.2fx)", settings_.gain, real_gain);
+            } else {
+                ESP_LOGW(TAG, "Failed to set gain: %d (errno=%d)", ret, errno);
+            }
+        } else {
+            ESP_LOGI(TAG, "Auto exposure enabled - using ISP AE");
+        }
+        
+        close(cam_fd);
+    } else {
+        ESP_LOGW(TAG, "Failed to open /dev/video0 for exposure/gain control");
     }
-    
-    // Test Pattern (sensor register)
-    ov5647_set_test_pattern(settings_.test_pattern);
     
     // ===== ISP White Balance (via V4L2) =====
     int isp_fd = open(ESP_VIDEO_ISP1_DEVICE_NAME, O_RDWR);

@@ -30,11 +30,11 @@ documentation: https://github.com/espressif/esp-gmf/blob/main/packages/esp_captu
 issues: https://github.com/espressif/esp-gmf/issues
 repository: git://github.com/espressif/esp-gmf.git
 repository_info:
-  commit_sha: 6eeade39eebd5baf4272908988b42a2cd1a12f77
+  commit_sha: 6e08cf4d4d2a6f19ac69d4ba6accf507ea1621d9
   path: ./packages/esp_capture
 tags:
 - multimedia
 - capture
 - gmf
 url: https://github.com/espressif/esp-gmf/tree/main/packages/esp_capture
-version: 0.7.8
+version: 0.7.8~1
