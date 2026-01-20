@@ -33,6 +33,7 @@ extern "C" {
 // IMX219 Mode registers
 #define IMX219_REG_MODE_SELECT      0x0100
 #define IMX219_REG_SOFTWARE_RESET   0x0103
+#define IMX219_REG_GROUP_HOLD       0x0104  // Grouped Parameter Hold (0=apply, 1=hold)
 
 // Frame format registers
 #define IMX219_REG_FRAME_LEN_H      0x0160
@@ -227,6 +228,16 @@ esp_err_t imx219_init_default(void);
  * @brief Debug: Print current IMX219 register status.
  */
 void imx219_debug_status(void);
+
+/**
+ * @brief Set exposure and gain atomically using Group Hold.
+ *        This is safe to call while streaming - changes are applied at next frame.
+ * 
+ * @param exposure Exposure time in lines (4 to VTS-4).
+ * @param gain     Analog gain (0-232).
+ * @return esp_err_t ESP_OK on success, or an error code.
+ */
+esp_err_t imx219_set_exposure_gain_atomic(uint16_t exposure, uint8_t gain);
 
 #ifdef __cplusplus
 }

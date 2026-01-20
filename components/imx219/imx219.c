@@ -37,16 +37,71 @@
 
 static const char *TAG = "imx219";
 
+/**
+ * IMX219 Gain Table for ISP Pipeline Controller
+ * 
+ * IMX219 analog gain formula: Gain = 256 / (256 - reg_value)
+ * reg_value range: 0-232 -> gain range: 1.0x to 10.67x
+ * 
+ * Values are gain * 1000 (to avoid decimals)
+ * ISP uses index into this table as gain_index
+ */
+static const uint32_t imx219_gain_val_map[] = {
+    // reg=0-31: 1.0x to 1.14x
+    1000, 1004, 1008, 1012, 1016, 1020, 1024, 1029,
+    1033, 1037, 1041, 1046, 1050, 1055, 1059, 1064,
+    1068, 1073, 1078, 1082, 1087, 1092, 1097, 1102,
+    1107, 1112, 1117, 1122, 1127, 1133, 1138, 1143,
+    // reg=32-63: 1.14x to 1.33x
+    1149, 1154, 1160, 1166, 1171, 1177, 1183, 1189,
+    1195, 1201, 1207, 1214, 1220, 1226, 1233, 1239,
+    1246, 1252, 1259, 1266, 1273, 1280, 1287, 1294,
+    1301, 1309, 1316, 1324, 1331, 1339, 1347, 1355,
+    // reg=64-95: 1.33x to 1.60x
+    1362, 1371, 1379, 1387, 1395, 1404, 1412, 1421,
+    1430, 1438, 1447, 1456, 1466, 1475, 1485, 1494,
+    1504, 1514, 1524, 1534, 1544, 1554, 1565, 1575,
+    1586, 1597, 1608, 1619, 1631, 1642, 1654, 1666,
+    // reg=96-127: 1.60x to 2.0x
+    1678, 1690, 1702, 1715, 1728, 1741, 1754, 1767,
+    1781, 1795, 1809, 1823, 1838, 1852, 1867, 1882,
+    1898, 1913, 1929, 1945, 1962, 1978, 1995, 2012,
+    2030, 2048, 2065, 2084, 2102, 2121, 2140, 2159,
+    // reg=128-159: 2.0x to 2.67x
+    2179, 2199, 2219, 2240, 2261, 2282, 2304, 2327,
+    2349, 2372, 2396, 2420, 2444, 2469, 2494, 2520,
+    2546, 2573, 2600, 2628, 2656, 2685, 2714, 2744,
+    2774, 2805, 2837, 2869, 2902, 2935, 2969, 3004,
+    // reg=160-191: 2.67x to 4.0x
+    3039, 3075, 3112, 3150, 3188, 3227, 3267, 3308,
+    3350, 3393, 3436, 3481, 3526, 3573, 3620, 3669,
+    3718, 3769, 3821, 3874, 3928, 3983, 4040, 4098,
+    4157, 4217, 4279, 4343, 4408, 4474, 4542, 4612,
+    // reg=192-223: 4.0x to 8.0x
+    4683, 4756, 4831, 4907, 4986, 5067, 5150, 5235,
+    5322, 5412, 5504, 5600, 5698, 5799, 5903, 6010,
+    6121, 6235, 6353, 6475, 6601, 6731, 6866, 7006,
+    7151, 7301, 7457, 7619, 7787, 7962, 8145, 8336,
+    // reg=224-232: 8.0x to 10.67x
+    8533, 8738, 8952, 9175, 9407, 9650, 9904, 10170, 10667,
+};
+
+#define IMX219_GAIN_MAP_SIZE ARRAY_SIZE(imx219_gain_val_map)
+
 // ISP info for different modes
 // IMX219 uses Bayer RGGB pattern (different from OV5647's GBRG)
+// tline_ns = hts * 1e9 / pclk = 3448 * 1e9 / 182.4MHz = 18903ns
 static const esp_cam_sensor_isp_info_t imx219_isp_info[] = {
-    // Mode 0: 1640x900 @ 60fps (2x2 binned, SAME timing as working 720p!)
+    // Mode 0: 1280x960 @ 60fps (2x2 binned)
     {
         .isp_v1_info = {
             .version = SENSOR_ISP_INFO_VERSION_DEFAULT,
             .pclk = 182400000,
-            .vts = 860,   // SAME as 720p!
+            .vts = 1100,
             .hts = 3448,
+            .tline_ns = 18903,  // line time in nanoseconds
+            .gain_def = 64,     // gain index for ~1.33x
+            .exp_def = 800,     // reasonable default exposure
             .bayer_type = ESP_CAM_SENSOR_BAYER_RGGB,
         }
     },
@@ -57,6 +112,9 @@ static const esp_cam_sensor_isp_info_t imx219_isp_info[] = {
             .pclk = 182400000,
             .vts = 860,
             .hts = 3448,
+            .tline_ns = 18903,
+            .gain_def = 64,
+            .exp_def = 800,
             .bayer_type = ESP_CAM_SENSOR_BAYER_RGGB,
         }
     },
@@ -67,6 +125,9 @@ static const esp_cam_sensor_isp_info_t imx219_isp_info[] = {
             .pclk = 182400000,
             .vts = 570,
             .hts = 3448,
+            .tline_ns = 18903,
+            .gain_def = 64,
+            .exp_def = 500,
             .bayer_type = ESP_CAM_SENSOR_BAYER_RGGB,
         }
     },
@@ -77,6 +138,9 @@ static const esp_cam_sensor_isp_info_t imx219_isp_info[] = {
             .pclk = 182400000,
             .vts = 3560,
             .hts = 3448,
+            .tline_ns = 18903,
+            .gain_def = 64,
+            .exp_def = 1500,
             .bayer_type = ESP_CAM_SENSOR_BAYER_RGGB,
         }
     },
@@ -351,11 +415,16 @@ static esp_err_t imx219_query_para_desc(esp_cam_sensor_device_t *dev, esp_cam_se
         qdesc->default_value = 1536;
         break;
     case ESP_CAM_SENSOR_GAIN:
-        qdesc->type = ESP_CAM_SENSOR_PARAM_TYPE_NUMBER;
-        qdesc->number.minimum = 0;
-        qdesc->number.maximum = 232;  // ~10.67x max
-        qdesc->number.step = 1;
-        qdesc->default_value = 64;    // ~1.33x
+        // Use ENUMERATION type - ISP Pipeline expects gain_index as index into this table
+        qdesc->type = ESP_CAM_SENSOR_PARAM_TYPE_ENUMERATION;
+        qdesc->enumeration.count = IMX219_GAIN_MAP_SIZE;
+        qdesc->enumeration.elements = imx219_gain_val_map;
+        qdesc->default_value = 64;  // Index 64 = ~1.33x gain
+        break;
+    case ESP_CAM_SENSOR_GROUP_EXP_GAIN:
+        // ISP Pipeline Controller uses this for atomic exposure+gain updates
+        qdesc->type = ESP_CAM_SENSOR_PARAM_TYPE_U8;
+        qdesc->u8.size = sizeof(esp_cam_sensor_gh_exp_gain_t);
         break;
     case ESP_CAM_SENSOR_VFLIP:
     case ESP_CAM_SENSOR_HMIRROR:
@@ -389,8 +458,14 @@ static esp_err_t imx219_set_para_value(esp_cam_sensor_device_t *dev, uint32_t id
         break;
     }
     case ESP_CAM_SENSOR_GAIN: {
+        // gain_index is the index into imx219_gain_val_map[]
+        // For IMX219, index directly maps to register value (0-232)
         int *val = (int *)arg;
-        ret = imx219_set_analogue_gain(dev, *val);
+        int gain_idx = *val;
+        if (gain_idx < 0) gain_idx = 0;
+        if (gain_idx >= (int)IMX219_GAIN_MAP_SIZE) gain_idx = IMX219_GAIN_MAP_SIZE - 1;
+        ret = imx219_set_analogue_gain(dev, gain_idx);
+        ESP_LOGD(TAG, "Set gain index=%d (gain=%.2fx)", gain_idx, imx219_gain_val_map[gain_idx] / 1000.0f);
         break;
     }
     case ESP_CAM_SENSOR_VFLIP: {
@@ -401,6 +476,70 @@ static esp_err_t imx219_set_para_value(esp_cam_sensor_device_t *dev, uint32_t id
     case ESP_CAM_SENSOR_HMIRROR: {
         int *val = (int *)arg;
         ret = imx219_set_mirror(dev, *val);
+        break;
+    }
+    case ESP_CAM_SENSOR_GROUP_EXP_GAIN: {
+        // Atomic exposure + gain update for manual control
+        // With AGC disabled in IPA config, only manual changes come through here
+        esp_cam_sensor_gh_exp_gain_t *value = (esp_cam_sensor_gh_exp_gain_t *)arg;
+        uint32_t exp_val = 0;
+        
+        // Determine exposure value (prefer exposure_val if set)
+        if (value->exposure_val != 0) {
+            exp_val = value->exposure_val;
+        } else if (value->exposure_us != 0) {
+            // Convert us to line count using tline_ns
+            // tline_ns = 18903ns, so line_time = ~18.9us
+            exp_val = (value->exposure_us * 1000) / 18903;
+            if (exp_val < 1) exp_val = 1;
+            if (exp_val > 65535) exp_val = 65535;
+        } else {
+            ESP_LOGE(TAG, "GROUP_EXP_GAIN: no valid exposure value");
+            ret = ESP_ERR_INVALID_ARG;
+            break;
+        }
+        
+        // Use Group Hold for atomic update at frame boundary
+        // Write group_hold = 1 BEFORE changes
+        ret = imx219_write(dev->sccb_handle, 0x0104, 0x01);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to set group hold");
+            break;
+        }
+        
+        // Set gain (gain_index maps directly to register value 0-232)
+        uint8_t gain_val = (value->gain_index > 232) ? 232 : (uint8_t)value->gain_index;
+        ret = imx219_write(dev->sccb_handle, IMX219_REG_ANALOG_GAIN, gain_val);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to write gain");
+            imx219_write(dev->sccb_handle, 0x0104, 0x00);  // Release group hold
+            break;
+        }
+        
+        // Set exposure (2 bytes, MSB first)
+        ret = imx219_write(dev->sccb_handle, IMX219_REG_EXPOSURE_H, (exp_val >> 8) & 0xFF);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to write exposure H");
+            imx219_write(dev->sccb_handle, 0x0104, 0x00);  // Release group hold
+            break;
+        }
+        ret = imx219_write(dev->sccb_handle, IMX219_REG_EXPOSURE_L, exp_val & 0xFF);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to write exposure L");
+            imx219_write(dev->sccb_handle, 0x0104, 0x00);  // Release group hold
+            break;
+        }
+        
+        // Release group hold - changes take effect at next frame
+        ret = imx219_write(dev->sccb_handle, 0x0104, 0x00);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to release group hold");
+            break;
+        }
+        
+        ESP_LOGI(TAG, "Manual EXP/GAIN: exp=%"PRIu32", gain=%"PRIu32" (%.2fx)", 
+                 exp_val, value->gain_index, 
+                 (value->gain_index < 233) ? 256.0f / (256.0f - value->gain_index) : 0);
         break;
     }
     default:

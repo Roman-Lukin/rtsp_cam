@@ -12,5 +12,5 @@
   "idf.espIdfPath": "/Users/workbook/esp/v5.5.1/esp-idf",
   "idf.toolsPath": "/Users/workbook/.espressif",
   "idf.currentSetup": "/Users/workbook/esp/v5.5.1/esp-idf",
-  "idf.portWin": "COM6"
+  "idf.portWin": "COM10"
 }

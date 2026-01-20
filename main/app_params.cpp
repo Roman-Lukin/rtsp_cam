@@ -3,6 +3,7 @@
 #include "nvs.h"
 #include "esp_log.h"
 #include "camera_interface.h"
+#include "imx219_helper.h"
 
 #include <cerrno>
 #include <fcntl.h>
@@ -10,25 +11,28 @@
 #include <sys/ioctl.h>
 #include "linux/videodev2.h"
 #include "esp_video_device.h"
+#include "esp_video_ioctl.h"      // For V4L2_CID_CAMERA_GROUP
 #include "esp_video_isp_ioctl.h"
+#include "esp_cam_sensor_types.h"  // For esp_cam_sensor_gh_exp_gain_t
 
 namespace {
     constexpr const char* TAG = "APP_PARAMS";
     constexpr const char* NVS_NAMESPACE = "cam_settings";
-    constexpr uint32_t SETTINGS_VERSION = 3;  // Increment to reset settings on update
+    constexpr uint32_t SETTINGS_VERSION = 5;  // Increment to reset settings on update
 }
 
 // Global instance pointer
 AppParams* g_app_params = nullptr;
 
 // Default settings for IMX219 sensor
-// Exposure: 4-1760 (VTS - 4), where VTS=1764 for 1280x960
-// Analog Gain: 0-232
+// Exposure: 4-1760 (VTS - 4), where VTS=1764 for 1280x960  
+// Analog Gain: 0-232, where real_gain = 256/(256-val)
+//   0 = 1x, 128 = 2x, 192 = 4x, 224 = 8x, 232 = 10.67x
 CameraSettings app_params_default_settings(void) {
     CameraSettings s = {};
     s.auto_exposure = false;     // IMX219 has no built-in AEC, use manual exposure
-    s.exposure_value = 1024;     // IMX219: higher exposure for brighter image (4-1760 lines)
-    s.gain = 128;                // IMX219: analog gain ~2x (0-232)
+    s.exposure_value = 1500;     // IMX219: near max exposure for indoor lighting (4-1760 lines)
+    s.gain = 200;                // IMX219: analog gain ~5x (0-232)
     s.auto_white_balance = true;
     s.wb_red_gain = 0x400;
     s.wb_green_gain = 0x400;
@@ -183,49 +187,81 @@ esp_err_t AppParams::save_settings() {
 }
 
 void AppParams::apply_to_camera() {
-    ESP_LOGI(TAG, "Applying camera settings...");
+    ESP_LOGW(TAG, "=== Applying camera settings ===");
+    ESP_LOGW(TAG, "  auto_exposure=%d, exposure=%d, gain=%d", 
+             settings_.auto_exposure, settings_.exposure_value, settings_.gain);
+    ESP_LOGW(TAG, "  auto_wb=%d, wb_r=%d, wb_g=%d, wb_b=%d",
+             settings_.auto_white_balance, settings_.wb_red_gain, 
+             settings_.wb_green_gain, settings_.wb_blue_gain);
     
+    // Check for direct bypass support (IMX219 with atomic Group Hold)
+    bool direct_bypass = false;
+    if (g_camera && strcmp(g_camera->getCapabilities().name, "IMX219") == 0) {
+        direct_bypass = true;
+        
+        // For IMX219: DO NOT use direct I2C writes during streaming!
+        // ISP Pipeline controls exposure/gain through ESP_CAM_SENSOR_GROUP_EXP_GAIN
+        // Direct I2C writes conflict with ISP and cause stream to freeze
+        if (!settings_.auto_exposure) {
+            ESP_LOGW(TAG, "IMX219: Manual exposure - will use V4L2 below (NOT direct I2C)");
+            // Don't call imx219_set_exposure_gain_atomic() - it conflicts with ISP!
+            // The V4L2 path below will handle it properly through the driver
+        } else {
+            ESP_LOGW(TAG, "IMX219: Auto exposure enabled - ISP/IPA controls exposure/gain");
+        }
+    }
+
     // ===== Sensor Settings via V4L2 (through /dev/video0) =====
-    // esp_video requires VIDIOC_S_EXT_CTRLS instead of VIDIOC_S_CTRL
+    // Use V4L2_CID_CAMERA_GROUP for atomic exposure+gain updates with Group Hold
+    // This avoids the stream freeze issue caused by separate exposure/gain writes
     int cam_fd = open("/dev/video0", O_RDWR);
     if (cam_fd >= 0) {
-        // Set exposure (V4L2_CID_EXPOSURE)
-        // IMX219: exposure in lines, range 4 to VTS-4 (approx 1760 for 1280x960)
+        // Set exposure and gain - only if manual mode
         if (!settings_.auto_exposure) {
+            // Use GROUP for atomic update (uses Group Hold internally)
+            esp_cam_sensor_gh_exp_gain_t group_params = {};
+            group_params.exposure_val = settings_.exposure_value;
+            group_params.exposure_us = 0;  // Use exposure_val directly
+            group_params.gain_index = settings_.gain;  // gain index 0-232
+            
             struct v4l2_ext_controls controls = {};
             struct v4l2_ext_control control[1] = {};
-            
-            // Set exposure using CAMERA_CLASS as esp_video does
             controls.ctrl_class = V4L2_CID_CAMERA_CLASS;
             controls.count = 1;
             controls.controls = control;
-            control[0].id = V4L2_CID_EXPOSURE;
-            control[0].value = settings_.exposure_value;
+            control[0].id = V4L2_CID_CAMERA_GROUP;
+            control[0].p_u8 = (uint8_t*)&group_params;
+            control[0].size = sizeof(group_params);
             
             int ret = ioctl(cam_fd, VIDIOC_S_EXT_CTRLS, &controls);
             if (ret == 0) {
-                ESP_LOGI(TAG, "Exposure set to %d lines", settings_.exposure_value);
-            } else {
-                ESP_LOGW(TAG, "Failed to set exposure: %d (errno=%d)", ret, errno);
-            }
-            
-            // Set gain (V4L2_CID_GAIN) using USER_CLASS as esp_video does
-            // IMX219: analog gain 0-232, where real_gain = 256/(256-val)
-            controls.ctrl_class = V4L2_CID_USER_CLASS;
-            controls.count = 1;
-            controls.controls = control;
-            control[0].id = V4L2_CID_GAIN;
-            control[0].value = settings_.gain;
-            
-            ret = ioctl(cam_fd, VIDIOC_S_EXT_CTRLS, &controls);
-            if (ret == 0) {
                 float real_gain = 256.0f / (256.0f - settings_.gain);
-                ESP_LOGI(TAG, "Gain set to %d (%.2fx)", settings_.gain, real_gain);
+                ESP_LOGI(TAG, "V4L2 GROUP: exposure=%d, gain=%d (%.2fx)", 
+                         settings_.exposure_value, settings_.gain, real_gain);
             } else {
-                ESP_LOGW(TAG, "Failed to set gain: %d (errno=%d)", ret, errno);
+                ESP_LOGW(TAG, "V4L2 GROUP failed: %d (errno=%d) - trying separate writes", ret, errno);
+                
+                // Fallback to separate writes (may cause issues during streaming)
+                controls.ctrl_class = V4L2_CID_CAMERA_CLASS;
+                controls.count = 1;
+                control[0].id = V4L2_CID_EXPOSURE;
+                control[0].value = settings_.exposure_value;
+                ret = ioctl(cam_fd, VIDIOC_S_EXT_CTRLS, &controls);
+                if (ret == 0) {
+                    ESP_LOGI(TAG, "V4L2 Exposure set to %d lines", settings_.exposure_value);
+                }
+                
+                controls.ctrl_class = V4L2_CID_USER_CLASS;
+                control[0].id = V4L2_CID_GAIN;
+                control[0].value = settings_.gain;
+                ret = ioctl(cam_fd, VIDIOC_S_EXT_CTRLS, &controls);
+                if (ret == 0) {
+                    float real_gain = 256.0f / (256.0f - settings_.gain);
+                    ESP_LOGI(TAG, "V4L2 Gain set to %d (%.2fx)", settings_.gain, real_gain);
+                }
             }
         } else {
-            ESP_LOGI(TAG, "Auto exposure enabled - using ISP AE");
+            ESP_LOGI(TAG, "Auto exposure enabled - ISP/IPA controls exposure/gain");
         }
         
         close(cam_fd);
@@ -234,29 +270,14 @@ void AppParams::apply_to_camera() {
     }
     
     // ===== ISP White Balance (via V4L2) =====
+    // Note: ISP Pipeline with IPA algorithm automatically handles AWB when enabled
+    // We only need to set manual WB gains if auto_white_balance is disabled
     int isp_fd = open(ESP_VIDEO_ISP1_DEVICE_NAME, O_RDWR);
     if (isp_fd >= 0) {
         if (settings_.auto_white_balance) {
-            // Auto WB - disable manual ISP WB
-            esp_video_isp_wb_t wb_config = {
-                .enable = false,
-                .red_gain = 1.0f,
-                .blue_gain = 1.0f
-            };
-            
-            struct v4l2_ext_control control = {
-                .id = V4L2_CID_USER_ESP_ISP_WB,
-                .size = sizeof(esp_video_isp_wb_t),
-            };
-            control.p_u8 = reinterpret_cast<uint8_t*>(&wb_config);
-            
-            struct v4l2_ext_controls controls = {
-                .ctrl_class = V4L2_CID_USER_CLASS,
-                .count = 1,
-            };
-            controls.controls = &control;
-            
-            ioctl(isp_fd, VIDIOC_S_EXT_CTRLS, &controls);
+            // Auto WB - let ISP/IPA pipeline handle WB automatically
+            // Do NOT set V4L2_CID_USER_ESP_ISP_WB here - it would override IPA's auto calculations
+            ESP_LOGI(TAG, "Auto WB enabled - ISP/IPA pipeline handles WB automatically");
         } else {
             // Manual WB - set gains in ISP
             float red_gain = static_cast<float>(settings_.wb_red_gain) / 1024.0f;

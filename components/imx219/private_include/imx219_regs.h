@@ -21,6 +21,7 @@ extern "C" {
 // Mode control
 #define IMX219_REG_MODE_SELECT      0x0100
 #define IMX219_REG_SOFTWARE_RESET   0x0103
+#define IMX219_REG_GROUP_HOLD       0x0104  // Group Hold for atomic exposure/gain updates
 
 // Frame format
 #define IMX219_REG_FRAME_LEN_H      0x0160

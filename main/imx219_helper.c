@@ -588,3 +588,39 @@ void imx219_debug_status(void)
     
     ESP_LOGI(TAG, "============================");
 }
+// ============================================================================
+// Atomic exposure/gain setting 
+// NOTE: Linux RPi driver does NOT use Group Hold - it writes directly
+// ============================================================================
+
+esp_err_t imx219_set_exposure_gain_atomic(uint16_t exposure, uint8_t gain)
+{
+    esp_err_t ret;
+    
+    // Clamp gain to valid range
+    if (gain > 232) gain = 232;
+    
+    // Write exposure (16-bit, big-endian) - NO Group Hold per Linux driver
+    ret = imx219_write_reg(IMX219_REG_EXPOSURE_H, (exposure >> 8) & 0xFF);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write exposure H");
+        return ret;
+    }
+    
+    ret = imx219_write_reg(IMX219_REG_EXPOSURE_L, exposure & 0xFF);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write exposure L");
+        return ret;
+    }
+    
+    // Write analog gain
+    ret = imx219_write_reg(IMX219_REG_ANALOG_GAIN, gain);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write gain");
+        return ret;
+    }
+    
+    float real_gain = 256.0f / (256.0f - gain);
+    ESP_LOGI(TAG, "Set exposure=%d, gain=%d (%.2fx)", exposure, gain, real_gain);
+    return ESP_OK;
+}

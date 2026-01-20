@@ -14,7 +14,6 @@
 #include "esp_netif.h"
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
-// #include "driver/ledc.h"  // Not needed - IMX219 has internal oscillator
 
 #include "codec_board.h"
 #include "codec_init.h"
@@ -60,68 +59,9 @@ namespace {
 // Forward declarations
 static void on_settings_change(const camera_settings_t *settings);
 
-// Camera GPIO pins for your custom board
-#define CAM_PWR_GPIO    GPIO_NUM_48   // CSI_IO0 - Pin 17 on 22-pin FPC = CAM_GPIO (power enable for IMX219)
-#define CAM_XCLK_GPIO   GPIO_NUM_47   // CSI_IO1 - Pin 18 on 22-pin FPC = XCLK/MCLK for IMX219 (24MHz)
-
-// LEDC configuration for XCLK generation (not needed - IMX219 has internal oscillator)
-// #define XCLK_LEDC_TIMER      LEDC_TIMER_0
-// #define XCLK_LEDC_CHANNEL    LEDC_CHANNEL_0
-// #define XCLK_FREQUENCY_HZ    24000000   // 24 MHz for IMX219
-
-#if 0  // IMX219 has internal 24.75MHz oscillator, external XCLK not needed
-/**
- * @brief Start XCLK signal generation for IMX219
- * IMX219 requires 24MHz external clock on CAM_IO1 pin
- * Uses LEDC peripheral to generate the clock signal
- */
-static esp_err_t start_xclk(void)
-{
-    ESP_LOGI(TAG, "Starting XCLK generation on GPIO%d at %d Hz", CAM_XCLK_GPIO, XCLK_FREQUENCY_HZ);
-    
-    // Configure LEDC timer
-    ledc_timer_config_t timer_conf = {};
-    timer_conf.speed_mode = LEDC_LOW_SPEED_MODE;
-    timer_conf.timer_num = XCLK_LEDC_TIMER;
-    timer_conf.duty_resolution = LEDC_TIMER_1_BIT;  // 1-bit resolution for 50% duty cycle
-    timer_conf.freq_hz = XCLK_FREQUENCY_HZ;
-    timer_conf.clk_cfg = LEDC_AUTO_CLK;
-    
-    esp_err_t ret = ledc_timer_config(&timer_conf);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "LEDC timer config failed: %d", ret);
-        return ret;
-    }
-    
-    // Configure LEDC channel
-    ledc_channel_config_t channel_conf = {};
-    channel_conf.speed_mode = LEDC_LOW_SPEED_MODE;
-    channel_conf.channel = XCLK_LEDC_CHANNEL;
-    channel_conf.timer_sel = XCLK_LEDC_TIMER;
-    channel_conf.intr_type = LEDC_INTR_DISABLE;
-    channel_conf.gpio_num = CAM_XCLK_GPIO;
-    channel_conf.duty = 1;  // 50% duty cycle with 1-bit resolution
-    channel_conf.hpoint = 0;
-    
-    ret = ledc_channel_config(&channel_conf);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "LEDC channel config failed: %d", ret);
-        return ret;
-    }
-    
-    ESP_LOGI(TAG, "XCLK started successfully");
-    return ESP_OK;
-}
-
-/**
- * @brief Stop XCLK signal generation
- */
-static void stop_xclk(void)
-{
-    ledc_stop(LEDC_LOW_SPEED_MODE, XCLK_LEDC_CHANNEL, 0);
-    ESP_LOGI(TAG, "XCLK stopped");
-}
-#endif  // XCLK disabled
+// Camera GPIO pins for custom board
+// Note: IMX219 has internal 24.75MHz oscillator, no external XCLK needed
+#define CAM_PWR_GPIO    GPIO_NUM_48   // CSI_IO0 - power enable for IMX219 / PWDN for OV5647
 
 /**
  * @brief Enable camera power for IMX219
@@ -488,7 +428,16 @@ extern "C" void app_main()
     ESP_LOGI(TAG, "Waiting 500ms for pipeline to stabilize...");
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    // Re-apply camera settings after pipeline start (some settings need STREAMON first)
+    // Apply camera settings - first pass after pipeline start
+    ESP_LOGI(TAG, "Applying initial camera settings (pass 1)...");
+    app_params.apply_to_camera();
+
+    // Wait longer for ISP to fully initialize and stabilize
+    ESP_LOGI(TAG, "Waiting 1.5s for ISP to stabilize...");
+    vTaskDelay(pdMS_TO_TICKS(1500));
+
+    // Re-apply settings - second pass ensures ISP AWB/AE are properly configured
+    ESP_LOGI(TAG, "Applying initial camera settings (pass 2)...");
     app_params.apply_to_camera();
 
     // Start capture task

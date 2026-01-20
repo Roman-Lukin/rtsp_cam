@@ -1,6 +1,7 @@
 #include "http_server.h"
 #include "settings.h"
 #include "app_params.h"
+#include "camera_interface.h"
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "cJSON.h"
@@ -82,6 +83,11 @@ static esp_err_t get_settings_handler(httpd_req_t *req)
     }
     
     cJSON *json = cJSON_CreateObject();
+    
+    // Add sensor name from detected camera (using C API)
+    const char* sensor_name = camera_get_name();
+    cJSON_AddStringToObject(json, "sensor_name", sensor_name);
+    
     cJSON_AddNumberToObject(json, "width", VIDEO_WIDTH);
     cJSON_AddNumberToObject(json, "height", VIDEO_HEIGHT);
     cJSON_AddNumberToObject(json, "fps", VIDEO_FPS);

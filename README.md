@@ -2,99 +2,58 @@
 
 This project implements an RTSP IP Camera on ESP32-P4.
 
+## Features
+
+- **H.264 hardware encoding** at up to 1280x960 @ 30fps
+- **Web interface** for camera settings adjustment
+- **Dual sensor support**: OV5647 and IMX219 with auto-detection
+- **NVS settings persistence** - settings survive reboots
+- **Real-time exposure/gain control** via HTTP API
+
 ## Supported Sensors
 
-### OV5647 (original)
+### OV5647
 - 5MP rolling shutter sensor
 - I2C address: 0x36
 - Fully working with RTSP streaming
 
-### IMX219 (NEW - in progress)
+### IMX219 ✅ WORKING
 - 8MP rolling shutter Sony sensor (Raspberry Pi Camera Module v2 compatible)
 - I2C address: 0x10
 - Pin-compatible with OV5647 (same FPC connector)
-- **Status: Driver implemented, streaming pipeline issues being debugged**
+- Tested resolution: 1280x960 @ 30fps H.264 output
 
 ## IMX219 Implementation Details
 
-### What was done:
+### Features implemented:
 
-1. **Full IMX219 driver created** (`components/imx219/`)
-   - Register definitions based on Sony datasheet
-   - Support for multiple resolutions: 1920x1080, 1280x720, 640x480
-   - MIPI CSI-2 2-lane configuration
-   - RAW10 Bayer output format
+1. **Full IMX219 driver** (`main/imx219_helper.c/h`, `main/imx219_camera.cpp`)
+   - Direct I2C register access bypassing V4L2 (better control)
+   - Group Hold (register 0x0104) for atomic exposure/gain updates
+   - Prevents MIPI stream freezing during parameter changes
 
-2. **Power control**
-   - IMX219 uses **active HIGH** power enable (GPIO48)
-   - Different from OV5647 which uses active LOW (PWDN logic)
-   - Power sequence: GPIO48 HIGH → 100ms delay → sensor ready
+2. **Exposure control**
+   - Range: 4-1760 lines (VTS=1764 for 1280x960)
+   - Atomic updates during streaming via Group Hold mechanism
 
-3. **I2C communication**
-   - Chip ID verification: reads 0x0219 from registers 0x0000-0x0001
-   - 16-bit register addresses (big-endian)
-   - Successfully detected at address 0x10
+3. **Analog gain control**
+   - Range: 0-232
+   - Real gain = 256/(256-val): 0=1x, 128=2x, 192=4x, 224=8x, 232=10.67x
 
-4. **ISP/IPA configuration**
-   - Created `imx219_default.json` for Image Processing Algorithm
-   - Added Kconfig option `CONFIG_CAMERA_IMX219_DEFAULT_IPA_JSON_CONFIGURATION_FILE`
-   - Registered via `project_include.cmake`
+4. **Camera interface abstraction** (`main/camera_interface.h/cpp`)
+   - `ICameraInterface` abstract base class
+   - Auto-detection of IMX219 vs OV5647
+   - Factory pattern for sensor instantiation
 
-5. **H.264 encoder buffer fix**
-   - Modified `H264_ENC_MIN_COMPRESS_RATIO` from 2 to 1
-   - Required for high-bitrate 720p encoding
-   - File: `managed_components/espressif__gmf_video/esp_gmf_video_enc.c`
-
-### Current issues being investigated:
-
-1. **Frame acquisition problem**
-   - First frame is successfully captured (~800KB keyframe)
-   - Subsequent frames don't arrive to capture sink queue
-   - `esp_capture_sink_acquire_frame()` blocks or returns -4 (NOT_FOUND)
-   - Pipeline negotiation succeeds: `o_uyy_e_vyy` → H.264 @ 1280x720 30fps
-
-2. **Possible causes**
-   - `share_q` / `video_q` configuration in esp_capture
-   - Timing between `esp_capture_sink_enable` and `esp_capture_start`
-   - GMF pipeline data flow after first frame
-
-### Files created/modified:
-
-```
-components/imx219/
-├── CMakeLists.txt
-├── Kconfig
-├── imx219.c                    # Main driver
-├── include/
-│   ├── imx219.h               # Public API
-│   └── imx219_types.h         # Type definitions
-├── private_include/
-│   ├── imx219_regs.h          # Register definitions
-│   └── imx219_settings.h      # Resolution configurations
-├── cfg/
-│   └── imx219_default.json    # IPA configuration
-└── project_include.cmake       # Build system integration
-
-main/main.cpp                   # Auto-detection OV5647/IMX219
-main/settings.h                 # Video resolution settings
-sdkconfig                       # IMX219 enabled
-sdkconfig.defaults             # Default configuration
-```
-
-### Hardware setup tested:
-- ESP32-P4 custom board with 32MB PSRAM
-- Ethernet connectivity
-- IMX219 sensor via 15-pin FPC cable
-- GPIO48 = Camera power enable
+### Hardware configuration:
+- ESP32-P4 with 32MB PSRAM
+- GPIO48 = Camera power enable (HIGH for IMX219, LOW for OV5647)
 - GPIO7 = I2C SDA, GPIO8 = I2C SCL
+- 2-lane MIPI CSI
 
 ## Setup
 
-1. Copy the following components from `esp-webrtc-solution/components` to `components/`:
-   - `av_render`
-   - `codec_board`
-   - `media_lib_sal`
-   - `webrtc_utils` (optional, if needed for time sync)
+1. Install ESP-IDF v5.5+ and set ESP32-P4 as target
 
 2. Build and Flash:
    ```bash
@@ -110,22 +69,61 @@ The firmware auto-detects the sensor by scanning I2C bus:
 - 0x36 → OV5647
 - 0x10 → IMX219
 
-### Video settings (main/settings.h)
+### Video settings ([main/settings.h](main/settings.h))
 ```cpp
 #define VIDEO_WIDTH  1280
-#define VIDEO_HEIGHT 720
+#define VIDEO_HEIGHT 960
 #define VIDEO_FPS    30
+```
+
+### Camera settings (via web interface)
+Access `http://<device-ip>/` for web configuration:
+- **Exposure**: 4-1760 lines (for 1280x960 mode)
+- **Gain**: 0-232 (analog gain)
+- **Denoise**: ISP bilateral filter
+- **White balance**: Manual or auto
+- **Bitrate**: H.264 encoder bitrate (kbps)
+
+## Web API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Camera settings web UI |
+| `/api/settings` | GET | Get current settings (JSON) |
+| `/api/settings` | POST | Update settings (JSON) |
+| `/api/defaults` | POST | Reset to default settings |
+| `/stream` | GET | MJPEG stream (if enabled) |
+
+## Project Structure
+
+```
+main/
+├── main.cpp              # Application entry, capture pipeline
+├── app_params.cpp/h      # Settings management, NVS persistence
+├── camera_interface.cpp/h # Abstract camera interface
+├── imx219_camera.cpp/h   # IMX219 implementation
+├── imx219_helper.c/h     # IMX219 low-level I2C control
+├── ov5647_camera.cpp/h   # OV5647 implementation  
+├── ov5647_helper.c/h     # OV5647 low-level control
+├── http_server.c/h       # Web interface and API
+├── rtsp_server.c/h       # RTSP streaming server
+├── network.c/h           # Network initialization
+└── settings.h            # Video resolution/FPS config
 ```
 
 ## Troubleshooting
 
 ### IMX219 not detected
-1. Check FPC cable connection (replace if damaged)
+1. Check FPC cable connection (15-pin, contacts facing away from board)
 2. Verify GPIO48 is set HIGH before I2C scan
 3. Check I2C pull-ups on SDA/SCL lines
 
-### No video stream
-1. Check ISP/IPA JSON is registered (log: "IPA configuration loaded")
-2. Verify MIPI CSI lane configuration
-3. Check H.264 encoder buffer size (ratio=1 for 720p)
+### Dark image
+1. Increase exposure value (default: 1500 lines)
+2. Increase gain value (default: 200, ~5x amplification)
+3. Check lighting conditions
 
+### Stream freezes
+This was caused by MIPI timing issues during register writes.
+Solution: Group Hold mechanism (register 0x0104) buffers changes
+and applies them atomically at frame boundary.

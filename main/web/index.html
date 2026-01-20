@@ -3,271 +3,832 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RTSP Camera Settings - IMX219</title>
+    <title>RTSP Camera Settings</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
+        :root {
+            --md-primary: #1976D2;
+            --md-primary-dark: #1565C0;
+            --md-primary-light: #42A5F5;
+            --md-secondary: #26A69A;
+            --md-surface: #FFFFFF;
+            --md-background: #FAFAFA;
+            --md-error: #D32F2F;
+            --md-success: #388E3C;
+            --md-on-primary: #FFFFFF;
+            --md-on-surface: #212121;
+            --md-on-surface-medium: #666666;
+            --md-on-surface-disabled: #9E9E9E;
+            --md-elevation-1: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+            --md-elevation-2: 0 3px 6px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.12);
+            --md-elevation-3: 0 10px 20px rgba(0,0,0,0.15), 0 3px 6px rgba(0,0,0,0.10);
+            --md-radius: 8px;
+            --md-radius-lg: 12px;
+        }
+        
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            min-height: 100vh; padding: 20px; color: #eee; 
+        
+        body {
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--md-background);
+            min-height: 100vh;
+            color: var(--md-on-surface);
+            line-height: 1.5;
         }
-        .container { max-width: 800px; margin: 0 auto; }
-        h1 { 
-            text-align: center; margin-bottom: 30px; color: #00d4ff;
-            text-shadow: 0 0 10px rgba(0,212,255,0.5); 
+        
+        /* App Bar */
+        .app-bar {
+            background: var(--md-primary);
+            color: var(--md-on-primary);
+            padding: 16px 24px;
+            box-shadow: var(--md-elevation-2);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
-        .card { 
-            background: rgba(255,255,255,0.1); border-radius: 15px;
-            padding: 20px; margin-bottom: 20px; backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.1); 
+        
+        .app-bar-content {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 16px;
         }
-        .card h2 { 
-            color: #00d4ff; margin-bottom: 15px; font-size: 1.2em;
-            border-bottom: 1px solid rgba(0,212,255,0.3); padding-bottom: 10px; 
+        
+        .app-bar h1 {
+            font-size: 20px;
+            font-weight: 500;
+            flex: 1;
         }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9em; }
-        input[type='range'] { 
-            width: 100%; height: 8px; border-radius: 4px;
-            background: #333; outline: none; -webkit-appearance: none; 
+        
+        .app-bar .material-icons {
+            font-size: 28px;
         }
-        input[type='range']::-webkit-slider-thumb { 
+        
+        .sensor-chip {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Main Content */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+        
+        /* Info Banner */
+        .info-banner {
+            background: var(--md-surface);
+            border-radius: var(--md-radius);
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: var(--md-elevation-1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .info-banner .material-icons {
+            color: var(--md-primary);
+            font-size: 24px;
+        }
+        
+        .info-banner .info-text {
+            flex: 1;
+        }
+        
+        .info-banner .info-label {
+            font-size: 12px;
+            color: var(--md-on-surface-medium);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .info-banner .info-value {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--md-on-surface);
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--md-surface);
+            border-radius: var(--md-radius-lg);
+            margin-bottom: 16px;
+            box-shadow: var(--md-elevation-1);
+            overflow: hidden;
+            transition: box-shadow 0.2s;
+        }
+        
+        .card:hover {
+            box-shadow: var(--md-elevation-2);
+        }
+        
+        .card-header {
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .card-header:hover {
+            background: rgba(0,0,0,0.02);
+        }
+        
+        .card-header .material-icons {
+            color: var(--md-primary);
+        }
+        
+        .card-header h2 {
+            flex: 1;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        
+        .card-header .expand-icon {
+            color: var(--md-on-surface-medium);
+            transition: transform 0.3s;
+        }
+        
+        .card.collapsed .card-header .expand-icon {
+            transform: rotate(-90deg);
+        }
+        
+        .card-content {
+            padding: 16px;
+            transition: max-height 0.3s ease-out, padding 0.3s;
+            overflow: hidden;
+        }
+        
+        .card.collapsed .card-content {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        .form-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: var(--md-on-surface-medium);
+        }
+        
+        .form-value {
+            font-weight: 500;
+            color: var(--md-primary);
+            min-width: 60px;
+            text-align: right;
+        }
+        
+        /* Material Slider */
+        input[type='range'] {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: #E0E0E0;
+            outline: none;
             -webkit-appearance: none;
-            width: 20px; height: 20px; border-radius: 50%; background: #00d4ff;
-            cursor: pointer; box-shadow: 0 0 10px rgba(0,212,255,0.5); 
+            cursor: pointer;
         }
-        input[type='checkbox'] { width: 20px; height: 20px; cursor: pointer; }
-        select { 
-            width: 100%; padding: 10px; border-radius: 8px; border: none;
-            background: #333; color: #eee; font-size: 1em; 
+        
+        input[type='range']::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--md-primary);
+            cursor: pointer;
+            box-shadow: var(--md-elevation-1);
+            transition: box-shadow 0.2s, transform 0.2s;
         }
-        .value-display { float: right; color: #00d4ff; font-weight: bold; }
-        .btn { 
-            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
-            color: #000; border: none; padding: 12px 30px; border-radius: 8px;
-            font-size: 1em; cursor: pointer; font-weight: bold;
-            transition: transform 0.2s, box-shadow 0.2s; 
+        
+        input[type='range']::-webkit-slider-thumb:hover {
+            box-shadow: var(--md-elevation-2);
+            transform: scale(1.1);
         }
-        .btn:hover { 
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(0,212,255,0.4); 
+        
+        input[type='range']:disabled {
+            opacity: 0.38;
+            cursor: not-allowed;
         }
-        .btn:active { transform: translateY(0); }
-        .btn-container { text-align: center; margin-top: 20px; }
-        .status { 
-            text-align: center; padding: 10px; border-radius: 8px;
-            margin-top: 10px; display: none; 
+        
+        /* Material Switch */
+        .switch-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
         }
-        .status.success { display: block; background: rgba(0,255,0,0.2); color: #0f0; }
-        .status.error { display: block; background: rgba(255,0,0,0.2); color: #f00; }
-        .row { display: flex; gap: 15px; }
-        .row .form-group { flex: 1; }
-        .info { 
-            background: rgba(0,212,255,0.1); padding: 15px; border-radius: 8px;
-            margin-bottom: 20px; text-align: center; 
+        
+        .switch-label {
+            font-size: 14px;
+            color: var(--md-on-surface);
         }
-        .sensor-badge {
-            display: inline-block; background: #00d4ff; color: #000;
-            padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8em;
+        
+        .switch {
+            position: relative;
+            width: 52px;
+            height: 32px;
+            cursor: pointer;
         }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .switch-track {
+            position: absolute;
+            top: 6px;
+            left: 0;
+            right: 0;
+            height: 20px;
+            background: #B0B0B0;
+            border-radius: 10px;
+            transition: background 0.2s;
+        }
+        
+        .switch input:checked + .switch-track {
+            background: rgba(25, 118, 210, 0.5);
+        }
+        
+        .switch-thumb {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 28px;
+            height: 28px;
+            background: #FAFAFA;
+            border-radius: 50%;
+            box-shadow: var(--md-elevation-1);
+            transition: transform 0.2s, background 0.2s;
+        }
+        
+        .switch input:checked ~ .switch-thumb {
+            transform: translateX(20px);
+            background: var(--md-primary);
+        }
+        
+        /* Material Select */
+        .select-wrapper {
+            position: relative;
+        }
+        
+        select {
+            width: 100%;
+            padding: 12px 40px 12px 16px;
+            border: 1px solid #E0E0E0;
+            border-radius: var(--md-radius);
+            background: var(--md-surface);
+            color: var(--md-on-surface);
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            transition: border-color 0.2s;
+        }
+        
+        select:hover {
+            border-color: var(--md-on-surface-medium);
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: var(--md-primary);
+            box-shadow: 0 0 0 1px var(--md-primary);
+        }
+        
+        .select-wrapper::after {
+            content: 'expand_more';
+            font-family: 'Material Icons';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--md-on-surface-medium);
+            pointer-events: none;
+        }
+        
+        /* Row Layout */
+        .row {
+            display: flex;
+            gap: 16px;
+        }
+        
+        .row .form-group {
+            flex: 1;
+        }
+        
+        /* Color Preview */
         .color-preview {
-            width: 100%; height: 30px; border-radius: 8px; margin-top: 10px;
-            border: 1px solid rgba(255,255,255,0.2);
+            width: 100%;
+            height: 32px;
+            border-radius: var(--md-radius);
+            margin-top: 8px;
+            border: 1px solid rgba(0,0,0,0.12);
         }
+        
+        /* FAB Button */
+        .fab-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 100;
+        }
+        
+        .fab {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: var(--md-primary);
+            color: var(--md-on-primary);
+            border: none;
+            box-shadow: var(--md-elevation-3);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+        }
+        
+        .fab:hover {
+            background: var(--md-primary-dark);
+            transform: scale(1.05);
+        }
+        
+        .fab:active {
+            transform: scale(0.95);
+        }
+        
+        .fab .material-icons {
+            font-size: 24px;
+        }
+        
+        /* Snackbar */
+        .snackbar {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #323232;
+            color: white;
+            padding: 14px 24px;
+            border-radius: var(--md-radius);
+            box-shadow: var(--md-elevation-3);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: transform 0.3s ease-out;
+            z-index: 200;
+        }
+        
+        .snackbar.show {
+            transform: translateX(-50%) translateY(0);
+        }
+        
+        .snackbar.success {
+            background: var(--md-success);
+        }
+        
+        .snackbar.error {
+            background: var(--md-error);
+        }
+        
+        .snackbar .material-icons {
+            font-size: 20px;
+        }
+        
+        /* Loading Overlay */
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 300;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        
+        .loading.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid var(--md-surface);
+            border-top-color: var(--md-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Responsive */
+        @media (max-width: 600px) {
+            .app-bar { padding: 12px 16px; }
+            .container { padding: 12px; }
+            .row { flex-direction: column; gap: 0; }
+            .info-banner { flex-wrap: wrap; }
+            .fab-container { bottom: 16px; right: 16px; }
+        }
+        
+        /* Hide elements when auto mode is enabled */
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📷 RTSP Camera Settings</h1>
-        
-        <div class="info">
-            <span class="sensor-badge">IMX219</span> |
-            <strong>Stream:</strong> rtsp://<span id="streamIP">--</span>:554/stream | 
-            <strong>Resolution:</strong> <span id="resolution">--</span>
+    <!-- App Bar -->
+    <header class="app-bar">
+        <div class="app-bar-content">
+            <span class="material-icons">videocam</span>
+            <h1>RTSP Camera Settings</h1>
+            <span class="sensor-chip" id="sensorChip">Loading...</span>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
+    <main class="container">
+        <!-- Stream Info -->
+        <div class="info-banner">
+            <span class="material-icons">stream</span>
+            <div class="info-text">
+                <div class="info-label">RTSP Stream</div>
+                <div class="info-value">rtsp://<span id="streamIP">--</span>:554/stream</div>
+            </div>
+            <div class="info-text">
+                <div class="info-label">Resolution</div>
+                <div class="info-value" id="resolution">--</div>
+            </div>
         </div>
         
         <form id="settingsForm">
-            <div class="card">
-                <h2>🔆 Exposure (IMX219)</h2>
-                <div class="form-group">
-                    <label><input type="checkbox" id="autoExposure" onchange="toggleExposure()"> Auto Exposure (ISP)</label>
+            <!-- Exposure Card -->
+            <div class="card" data-section="exposure">
+                <div class="card-header" onclick="toggleCard(this.parentElement)">
+                    <span class="material-icons">brightness_6</span>
+                    <h2>Exposure</h2>
+                    <span class="material-icons expand-icon">expand_more</span>
                 </div>
-                <div id="manualExposure">
-                    <div class="form-group">
-                        <label>Exposure Time (lines) <span class="value-display" id="expVal">512</span></label>
-                        <input type="range" id="exposure" min="4" max="1760" value="512" oninput="updateVal('expVal', this.value)">
+                <div class="card-content">
+                    <div class="switch-row">
+                        <span class="switch-label">Auto Exposure (ISP)</span>
+                        <label class="switch">
+                            <input type="checkbox" id="autoExposure" onchange="toggleExposure()">
+                            <span class="switch-track"></span>
+                            <span class="switch-thumb"></span>
+                        </label>
                     </div>
-                    <div class="form-group">
-                        <label>Analog Gain (0-232) <span class="value-display" id="gainVal">64</span></label>
-                        <input type="range" id="gain" min="0" max="232" value="64" oninput="updateVal('gainVal', this.value)">
+                    <div id="manualExposure">
+                        <div class="form-group">
+                            <div class="form-label">
+                                <span>Exposure Time (lines)</span>
+                                <span class="form-value" id="expVal">512</span>
+                            </div>
+                            <input type="range" id="exposure" min="4" max="1760" value="512" oninput="updateVal('expVal', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <div class="form-label">
+                                <span>Analog Gain</span>
+                                <span class="form-value" id="gainVal">64</span>
+                            </div>
+                            <input type="range" id="gain" min="0" max="232" value="64" oninput="updateVal('gainVal', this.value)">
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div class="card">
-                <h2>🎨 White Balance (ISP)</h2>
-                <div class="form-group">
-                    <label><input type="checkbox" id="autoWB" checked onchange="toggleWB()"> Auto White Balance</label>
+            <!-- White Balance Card -->
+            <div class="card" data-section="wb">
+                <div class="card-header" onclick="toggleCard(this.parentElement)">
+                    <span class="material-icons">palette</span>
+                    <h2>White Balance</h2>
+                    <span class="material-icons expand-icon">expand_more</span>
                 </div>
-                <div id="manualWB" style="display:none">
+                <div class="card-content">
+                    <div class="switch-row">
+                        <span class="switch-label">Auto White Balance</span>
+                        <label class="switch">
+                            <input type="checkbox" id="autoWB" checked onchange="toggleWB()">
+                            <span class="switch-track"></span>
+                            <span class="switch-thumb"></span>
+                        </label>
+                    </div>
+                    <div id="manualWB" class="hidden">
+                        <div class="row">
+                            <div class="form-group">
+                                <div class="form-label">
+                                    <span>Red</span>
+                                    <span class="form-value" id="wbRedVal">1024</span>
+                                </div>
+                                <input type="range" id="wbRed" min="256" max="4095" value="1024" oninput="updateWB()">
+                            </div>
+                            <div class="form-group">
+                                <div class="form-label">
+                                    <span>Green</span>
+                                    <span class="form-value" id="wbGreenVal">1024</span>
+                                </div>
+                                <input type="range" id="wbGreen" min="256" max="4095" value="1024" oninput="updateWB()">
+                            </div>
+                            <div class="form-group">
+                                <div class="form-label">
+                                    <span>Blue</span>
+                                    <span class="form-value" id="wbBlueVal">1024</span>
+                                </div>
+                                <input type="range" id="wbBlue" min="256" max="4095" value="1024" oninput="updateWB()">
+                            </div>
+                        </div>
+                        <div id="wbPreview" class="color-preview"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Test Pattern Card -->
+            <div class="card collapsed" data-section="pattern">
+                <div class="card-header" onclick="toggleCard(this.parentElement)">
+                    <span class="material-icons">grid_on</span>
+                    <h2>Test Pattern</h2>
+                    <span class="material-icons expand-icon">expand_more</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <div class="form-label">Pattern Mode</div>
+                        <div class="select-wrapper">
+                            <select id="testPattern">
+                                <option value="0">Disabled (Live Camera)</option>
+                                <option value="1">Solid Color</option>
+                                <option value="2">Color Bars (8 colors)</option>
+                                <option value="3">Grey Color Bars</option>
+                                <option value="4">PN9 (pseudo-random)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Noise Reduction Card -->
+            <div class="card" data-section="denoise">
+                <div class="card-header" onclick="toggleCard(this.parentElement)">
+                    <span class="material-icons">blur_off</span>
+                    <h2>Noise Reduction</h2>
+                    <span class="material-icons expand-icon">expand_more</span>
+                </div>
+                <div class="card-content">
+                    <div class="switch-row">
+                        <span class="switch-label">Enable Denoising</span>
+                        <label class="switch">
+                            <input type="checkbox" id="denoiseEnable" checked onchange="toggleDenoise()">
+                            <span class="switch-track"></span>
+                            <span class="switch-thumb"></span>
+                        </label>
+                    </div>
+                    <div class="form-group" id="denoiseGroup">
+                        <div class="form-label">
+                            <span>Denoise Level</span>
+                            <span class="form-value" id="denoiseVal">10</span>
+                        </div>
+                        <input type="range" id="denoiseLevel" min="2" max="20" value="10" oninput="updateVal('denoiseVal', this.value)">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Anti-Flicker Card -->
+            <div class="card collapsed" data-section="flicker">
+                <div class="card-header" onclick="toggleCard(this.parentElement)">
+                    <span class="material-icons">electric_bolt</span>
+                    <h2>Anti-Flicker</h2>
+                    <span class="material-icons expand-icon">expand_more</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <div class="form-label">Power Line Frequency</div>
+                        <div class="select-wrapper">
+                            <select id="powerLineFreq">
+                                <option value="0">Disabled</option>
+                                <option value="1" selected>50 Hz (Europe)</option>
+                                <option value="2">60 Hz (USA)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- H.264 Encoder Card -->
+            <div class="card" data-section="encoder">
+                <div class="card-header" onclick="toggleCard(this.parentElement)">
+                    <span class="material-icons">movie</span>
+                    <h2>H.264 Encoder</h2>
+                    <span class="material-icons expand-icon">expand_more</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <div class="form-label">
+                            <span>Bitrate (kbps)</span>
+                            <span class="form-value" id="bitrateVal">4000</span>
+                        </div>
+                        <input type="range" id="bitrate" min="500" max="10000" step="250" value="4000" oninput="updateVal('bitrateVal', this.value)">
+                    </div>
+                    <div class="form-group">
+                        <div class="form-label">
+                            <span>GOP Size (I-frame interval)</span>
+                            <span class="form-value" id="gopVal">30</span>
+                        </div>
+                        <input type="range" id="gop" min="1" max="120" value="30" oninput="updateVal('gopVal', this.value)">
+                    </div>
                     <div class="row">
                         <div class="form-group">
-                            <label>Red <span class="value-display" id="wbRedVal">1024</span></label>
-                            <input type="range" id="wbRed" min="256" max="4095" value="1024" oninput="updateWB()">
+                            <div class="form-label">
+                                <span>Min QP</span>
+                                <span class="form-value" id="minQpVal">20</span>
+                            </div>
+                            <input type="range" id="minQp" min="0" max="51" value="20" oninput="updateVal('minQpVal', this.value)">
                         </div>
                         <div class="form-group">
-                            <label>Green <span class="value-display" id="wbGreenVal">1024</span></label>
-                            <input type="range" id="wbGreen" min="256" max="4095" value="1024" oninput="updateWB()">
+                            <div class="form-label">
+                                <span>Max QP</span>
+                                <span class="form-value" id="maxQpVal">40</span>
+                            </div>
+                            <input type="range" id="maxQp" min="0" max="51" value="40" oninput="updateVal('maxQpVal', this.value)">
                         </div>
-                        <div class="form-group">
-                            <label>Blue <span class="value-display" id="wbBlueVal">1024</span></label>
-                            <input type="range" id="wbBlue" min="256" max="4095" value="1024" oninput="updateWB()">
-                        </div>
-                    </div>
-                    <div id="wbPreview" class="color-preview"></div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>🧪 Test Pattern (IMX219)</h2>
-                <div class="form-group">
-                    <label>Pattern Mode</label>
-                    <select id="testPattern">
-                        <option value="0">Disabled (Live Camera)</option>
-                        <option value="1">Solid Color</option>
-                        <option value="2">Color Bars (8 colors)</option>
-                        <option value="3">Grey Color Bars</option>
-                        <option value="4">PN9 (pseudo-random)</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>🔇 Noise Reduction (ISP)</h2>
-                <div class="form-group">
-                    <label><input type="checkbox" id="denoiseEnable" checked onchange="toggleDenoise()"> Enable Denoising</label>
-                </div>
-                <div class="form-group" id="denoiseGroup">
-                    <label>Denoise Level <span class="value-display" id="denoiseVal">10</span></label>
-                    <input type="range" id="denoiseLevel" min="2" max="20" value="10" oninput="updateVal('denoiseVal', this.value)">
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>💡 Anti-Flicker</h2>
-                <div class="form-group">
-                    <label>Power Line Frequency</label>
-                    <select id="powerLineFreq">
-                        <option value="0">Disabled</option>
-                        <option value="1" selected>50 Hz (Europe)</option>
-                        <option value="2">60 Hz (USA)</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h2>🎬 H.264 Encoder</h2>
-                <div class="form-group">
-                    <label>Bitrate (kbps) <span class="value-display" id="bitrateVal">4000</span></label>
-                    <input type="range" id="bitrate" min="500" max="10000" step="250" value="4000" oninput="updateVal('bitrateVal', this.value)">
-                </div>
-                <div class="form-group">
-                    <label>GOP Size (I-frame interval) <span class="value-display" id="gopVal">30</span></label>
-                    <input type="range" id="gop" min="1" max="120" value="30" oninput="updateVal('gopVal', this.value)">
-                </div>
-                <div class="row">
-                    <div class="form-group">
-                        <label>Min QP <span class="value-display" id="minQpVal">20</span></label>
-                        <input type="range" id="minQp" min="0" max="51" value="20" oninput="updateVal('minQpVal', this.value)">
-                    </div>
-                    <div class="form-group">
-                        <label>Max QP <span class="value-display" id="maxQpVal">40</span></label>
-                        <input type="range" id="maxQp" min="0" max="51" value="40" oninput="updateVal('maxQpVal', this.value)">
                     </div>
                 </div>
             </div>
-            
-            <div class="btn-container">
-                <button type="submit" class="btn">💾 Save Settings</button>
-            </div>
-            <div id="status" class="status"></div>
         </form>
+        
+        <!-- Spacer for FAB -->
+        <div style="height: 80px;"></div>
+    </main>
+    
+    <!-- FAB Save Button -->
+    <div class="fab-container">
+        <button type="button" class="fab" onclick="saveSettings()" title="Save Settings">
+            <span class="material-icons">save</span>
+        </button>
+    </div>
+    
+    <!-- Snackbar -->
+    <div id="snackbar" class="snackbar">
+        <span class="material-icons" id="snackbarIcon">check_circle</span>
+        <span id="snackbarText">Settings saved!</span>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
     </div>
     
     <script>
-        function updateVal(id, val) { 
-            document.getElementById(id).textContent = val; 
+        // Utility Functions
+        function updateVal(id, val) {
+            document.getElementById(id).textContent = val;
+        }
+        
+        function toggleCard(card) {
+            card.classList.toggle('collapsed');
         }
         
         function toggleExposure() {
-            document.getElementById('manualExposure').style.display = 
-                document.getElementById('autoExposure').checked ? 'none' : 'block';
+            var manual = document.getElementById('manualExposure');
+            var auto = document.getElementById('autoExposure').checked;
+            manual.classList.toggle('hidden', auto);
+            document.getElementById('exposure').disabled = auto;
+            document.getElementById('gain').disabled = auto;
         }
         
         function toggleWB() {
-            document.getElementById('manualWB').style.display = 
-                document.getElementById('autoWB').checked ? 'none' : 'block';
+            var manual = document.getElementById('manualWB');
+            var auto = document.getElementById('autoWB').checked;
+            manual.classList.toggle('hidden', auto);
         }
         
         function toggleDenoise() {
-            document.getElementById('denoiseGroup').style.display = 
-                document.getElementById('denoiseEnable').checked ? 'block' : 'none';
+            var enabled = document.getElementById('denoiseEnable').checked;
+            document.getElementById('denoiseLevel').disabled = !enabled;
         }
         
         function updateWB() {
-            const r = parseInt(document.getElementById('wbRed').value);
-            const g = parseInt(document.getElementById('wbGreen').value);
-            const b = parseInt(document.getElementById('wbBlue').value);
+            var r = parseInt(document.getElementById('wbRed').value);
+            var g = parseInt(document.getElementById('wbGreen').value);
+            var b = parseInt(document.getElementById('wbBlue').value);
             updateVal('wbRedVal', r);
             updateVal('wbGreenVal', g);
             updateVal('wbBlueVal', b);
-            // Preview: normalize to 0-255 for CSS (1024 = 1.0x = 128 in preview)
-            const rPrev = Math.min(255, Math.round(r / 16));
-            const gPrev = Math.min(255, Math.round(g / 16));
-            const bPrev = Math.min(255, Math.round(b / 16));
+            // Preview: normalize to 0-255 for CSS (1024 = 1.0x)
+            var rPrev = Math.min(255, Math.round(r / 16));
+            var gPrev = Math.min(255, Math.round(g / 16));
+            var bPrev = Math.min(255, Math.round(b / 16));
             document.getElementById('wbPreview').style.background = 
                 'rgb(' + rPrev + ', ' + gPrev + ', ' + bPrev + ')';
+        }
+        
+        function showSnackbar(message, type) {
+            var snackbar = document.getElementById('snackbar');
+            var icon = document.getElementById('snackbarIcon');
+            var text = document.getElementById('snackbarText');
+            
+            snackbar.className = 'snackbar ' + type;
+            icon.textContent = type === 'success' ? 'check_circle' : 'error';
+            text.textContent = message;
+            
+            snackbar.classList.add('show');
+            setTimeout(function() {
+                snackbar.classList.remove('show');
+            }, 3000);
+        }
+        
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('show', show);
         }
         
         // Set stream IP address from current hostname
         document.getElementById('streamIP').textContent = window.location.hostname;
         
         // Load current settings
-        fetch('/api/settings').then(function(r) { return r.json(); }).then(function(data) {
-            document.getElementById('resolution').textContent = 
-                data.width + 'x' + data.height + ' @ ' + data.fps + 'fps';
-            document.getElementById('autoExposure').checked = data.auto_exposure;
-            document.getElementById('exposure').value = data.exposure_value;
-            document.getElementById('gain').value = data.gain;
-            document.getElementById('autoWB').checked = data.auto_white_balance;
-            document.getElementById('wbRed').value = data.wb_red_gain || 1024;
-            document.getElementById('wbGreen').value = data.wb_green_gain || 1024;
-            document.getElementById('wbBlue').value = data.wb_blue_gain || 1024;
-            document.getElementById('testPattern').value = data.test_pattern || 0;
-            document.getElementById('denoiseEnable').checked = data.denoise_enable;
-            document.getElementById('denoiseLevel').value = data.denoise_level;
-            document.getElementById('powerLineFreq').value = data.power_line_freq;
-            document.getElementById('bitrate').value = data.bitrate;
-            document.getElementById('gop').value = data.gop;
-            document.getElementById('minQp').value = data.min_qp;
-            document.getElementById('maxQp').value = data.max_qp;
-            
-            updateVal('expVal', data.exposure_value);
-            updateVal('gainVal', data.gain);
-            updateVal('denoiseVal', data.denoise_level);
-            updateVal('bitrateVal', data.bitrate);
-            updateVal('gopVal', data.gop);
-            updateVal('minQpVal', data.min_qp);
-            updateVal('maxQpVal', data.max_qp);
-            
-            toggleExposure();
-            toggleWB();
-            toggleDenoise();
-            updateWB();
-        });
+        showLoading(true);
+        fetch('/api/settings')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                showLoading(false);
+                
+                // Update sensor name dynamically
+                var sensorName = data.sensor_name || 'Unknown';
+                document.getElementById('sensorChip').textContent = sensorName;
+                document.title = 'RTSP Camera - ' + sensorName;
+                
+                // Update resolution
+                document.getElementById('resolution').textContent = 
+                    data.width + 'x' + data.height + ' @ ' + data.fps + 'fps';
+                
+                // Load all values
+                document.getElementById('autoExposure').checked = data.auto_exposure;
+                document.getElementById('exposure').value = data.exposure_value;
+                document.getElementById('gain').value = data.gain;
+                document.getElementById('autoWB').checked = data.auto_white_balance;
+                document.getElementById('wbRed').value = data.wb_red_gain || 1024;
+                document.getElementById('wbGreen').value = data.wb_green_gain || 1024;
+                document.getElementById('wbBlue').value = data.wb_blue_gain || 1024;
+                document.getElementById('testPattern').value = data.test_pattern || 0;
+                document.getElementById('denoiseEnable').checked = data.denoise_enable;
+                document.getElementById('denoiseLevel').value = data.denoise_level;
+                document.getElementById('powerLineFreq').value = data.power_line_freq;
+                document.getElementById('bitrate').value = data.bitrate;
+                document.getElementById('gop').value = data.gop;
+                document.getElementById('minQp').value = data.min_qp;
+                document.getElementById('maxQp').value = data.max_qp;
+                
+                // Update display values
+                updateVal('expVal', data.exposure_value);
+                updateVal('gainVal', data.gain);
+                updateVal('denoiseVal', data.denoise_level);
+                updateVal('bitrateVal', data.bitrate);
+                updateVal('gopVal', data.gop);
+                updateVal('minQpVal', data.min_qp);
+                updateVal('maxQpVal', data.max_qp);
+                
+                // Apply toggle states
+                toggleExposure();
+                toggleWB();
+                toggleDenoise();
+                updateWB();
+            })
+            .catch(function(err) {
+                showLoading(false);
+                showSnackbar('Failed to load settings', 'error');
+            });
         
-        document.getElementById('settingsForm').onsubmit = function(e) {
-            e.preventDefault();
+        // Save settings
+        function saveSettings() {
             var data = {
                 auto_exposure: document.getElementById('autoExposure').checked,
                 exposure_value: parseInt(document.getElementById('exposure').value),
@@ -286,21 +847,31 @@
                 max_qp: parseInt(document.getElementById('maxQp').value)
             };
             
+            showLoading(true);
             fetch('/api/settings', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(data)
-            }).then(function(r) { return r.json(); }).then(function(resp) {
-                var status = document.getElementById('status');
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(resp) {
+                showLoading(false);
                 if (resp.success) {
-                    status.className = 'status success';
-                    status.textContent = '✓ Settings saved!';
+                    showSnackbar('Settings saved successfully!', 'success');
                 } else {
-                    status.className = 'status error';
-                    status.textContent = '✗ Error: ' + resp.error;
+                    showSnackbar('Error: ' + resp.error, 'error');
                 }
-                setTimeout(function() { status.className = 'status'; }, 3000);
+            })
+            .catch(function(err) {
+                showLoading(false);
+                showSnackbar('Failed to save settings', 'error');
             });
+        }
+        
+        // Prevent form submission (we use FAB button)
+        document.getElementById('settingsForm').onsubmit = function(e) {
+            e.preventDefault();
+            saveSettings();
         };
     </script>
 </body>
