@@ -275,10 +275,29 @@ void AppParams::apply_to_camera() {
     int isp_fd = open(ESP_VIDEO_ISP1_DEVICE_NAME, O_RDWR);
     if (isp_fd >= 0) {
         if (settings_.auto_white_balance) {
-            // Auto WB - let ISP/IPA pipeline handle WB automatically
-            // Do NOT set V4L2_CID_USER_ESP_ISP_WB here - it would override IPA's auto calculations
-            ESP_LOGI(TAG, "Auto WB enabled - ISP/IPA pipeline handles WB automatically");
-        } else {
+            // Auto WB - disable manual WB override to let IPA take control
+            esp_video_isp_wb_t wb_config = {
+                .enable = false,  // ← Disable manual WB override
+                .red_gain = 1.0f,
+                .blue_gain = 1.0f
+            };
+            
+            struct v4l2_ext_control control = {
+                .id = V4L2_CID_USER_ESP_ISP_WB,
+                .size = sizeof(esp_video_isp_wb_t),
+            };
+            control.p_u8 = reinterpret_cast<uint8_t*>(&wb_config);
+            
+            struct v4l2_ext_controls controls = {
+                .ctrl_class = V4L2_CID_USER_CLASS,
+                .count = 1,
+            };
+            controls.controls = &control;
+            
+            ioctl(isp_fd, VIDIOC_S_EXT_CTRLS, &controls);
+            ESP_LOGI(TAG, "Auto WB enabled - reset ISP manual WB override");
+        } 
+        else {
             // Manual WB - set gains in ISP
             float red_gain = static_cast<float>(settings_.wb_red_gain) / 1024.0f;
             float blue_gain = static_cast<float>(settings_.wb_blue_gain) / 1024.0f;
